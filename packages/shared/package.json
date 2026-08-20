@@ -1,0 +1,13 @@
+{
+  "name": "@cotizador/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tipos, schemas y constantes compartidas — Cotizador Solar",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "5"
+  }
+}

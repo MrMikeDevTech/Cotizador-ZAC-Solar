@@ -1,0 +1,34 @@
+{
+  "folders": [
+    {
+      "name": "cotizador-solar (root)",
+      "path": "."
+    },
+    {
+      "name": "desktop (Electron)",
+      "path": "apps/desktop"
+    },
+    {
+      "name": "renderer (Next.js)",
+      "path": "apps/desktop/renderer"
+    },
+    {
+      "name": "backend (API)",
+      "path": "apps/backend"
+    },
+    {
+      "name": "shared (tipos)",
+      "path": "packages/shared"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.git": true
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.next": true,
+      "**/out": true
+    }
+  }
+}

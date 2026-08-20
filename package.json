@@ -1,0 +1,22 @@
+{
+  "name": "cotizador-solar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monorepo Cotizador Solar — Electron + Next.js (static export) + Backend + Shared types",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "5"
+  },
+  "workspaces": [
+    "apps/*",
+    "apps/*/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:renderer": "bun run --filter @cotizador/renderer dev",
+    "dev:backend": "bun run --filter @cotizador/backend dev",
+    "build:renderer": "bun run --filter @cotizador/renderer build",
+    "start": "bun run --filter @cotizador/desktop start",
+    "dist": "bun run --filter @cotizador/desktop dist"
+  }
+}

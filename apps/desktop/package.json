@@ -1,0 +1,17 @@
+{
+  "name": "@cotizador/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicación de escritorio Electron — Cotizador Solar",
+  "author": "MrMikeDev",
+  "type": "module",
+  "main": "electron/main.ts",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "43.2.0",
+    "electron-builder": "^26.15.3"
+  }
+}
