@@ -9,8 +9,20 @@ import {
   Paso4OtrosCargos,
   Paso5Confirmacion,
 } from './components';
-import { ConsumoPeriodo, DatosContacto } from './types';
-import { panelesData, PAGO_MINIMO_CFE } from './constants';
+import {
+  ConsumoPeriodo,
+  DatosContacto,
+  CargoEditable,
+  ConceptoCotizacion,
+  MetodoPrecio,
+  TipoMoneda,
+} from './types';
+import {
+  panelesData,
+  PAGO_MINIMO_CFE,
+  LISTA_ESTRUCTURAS,
+  CONCEPTOS_COTIZACION_DEFECTO,
+} from './constants';
 
 export default function NuevoProyecto() {
   // --- CONTROL DE PASO ---
@@ -125,6 +137,74 @@ export default function NuevoProyecto() {
     }
   }, [panelKey, cantPaneles, consumoPromedioKwh, pagoPromedioCFE]);
 
+  // --- ESTADOS PASO 4: OTROS CARGOS & COTIZACIÓN ---
+  const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>(null);
+  const [metodoPrecio, setMetodoPrecio] = useState<MetodoPrecio>('unitario');
+  const [opcionesAvanzadas, setOpcionesAvanzadas] = useState<boolean>(false);
+  const [incluirIva, setIncluirIva] = useState<boolean>(false);
+  const [tipoMoneda, setTipoMoneda] = useState<TipoMoneda>('MXN');
+  const [valorDolar, setValorDolar] = useState<number>(16.90);
+  const [ocultarDesglose, setOcultarDesglose] = useState<boolean>(false);
+
+  const [descuento5, setDescuento5] = useState<boolean>(false);
+  const [descuento10, setDescuento10] = useState<boolean>(false);
+  const [cargosEditables, setCargosEditables] = useState<CargoEditable[]>([]);
+
+  const [conceptos, setConceptos] = useState<ConceptoCotizacion[]>(CONCEPTOS_COTIZACION_DEFECTO);
+
+  // Ajuste automático de costos sugeridos de paneles e inversores al cambiar Paso 3
+  useEffect(() => {
+    const numPaneles = Number(cantPaneles) || 0;
+    const numInversores = Number(cantInversores) || 0;
+
+    setConceptos((prev) =>
+      prev.map((c) => {
+        if (c.id === '1' && numPaneles > 0) {
+          // Estimación sugerida de precio de paneles: $4,400 MXN por panel
+          return { ...c, costoBase: numPaneles * 4400 };
+        }
+        if (c.id === '2' && numInversores > 0) {
+          // Estimación sugerida de precio de inversor: $13,500 MXN por inversor
+          return { ...c, costoBase: numInversores * 13500 };
+        }
+        return c;
+      })
+    );
+  }, [cantPaneles, cantInversores]);
+
+  // Cálculos dinámicos de cotización compartidos entre Paso 4 y Paso 5
+  const estructuraActual = useMemo(
+    () => LISTA_ESTRUCTURAS.find((e) => e.id === estructuraSeleccionadaId),
+    [estructuraSeleccionadaId]
+  );
+  const precioEstructura = estructuraActual ? estructuraActual.precio : 0;
+
+  const subtotalConceptos = useMemo(
+    () =>
+      conceptos.reduce(
+        (acc, curr) => acc + curr.costoBase * (1 + curr.margenPorcentaje / 100),
+        0
+      ),
+    [conceptos]
+  );
+
+  const subtotalCargosEditables = useMemo(
+    () => cargosEditables.reduce((acc, curr) => acc + (Number(curr.monto) || 0), 0),
+    [cargosEditables]
+  );
+
+  const subtotalGeneral = subtotalConceptos + subtotalCargosEditables + precioEstructura;
+
+  let porcentajeDescuento = 0;
+  if (descuento5) porcentajeDescuento += 5;
+  if (descuento10) porcentajeDescuento += 10;
+
+  const montoDescuento = subtotalGeneral * (porcentajeDescuento / 100);
+  const subtotalConDescuento = subtotalGeneral - montoDescuento;
+
+  const montoIVA = incluirIva ? subtotalConDescuento * 0.16 : 0;
+  const granTotal = subtotalConDescuento + montoIVA;
+
   return (
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800 flex justify-center">
       <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl p-6 md:p-10 relative h-max">
@@ -206,6 +286,28 @@ export default function NuevoProyecto() {
         {/* --- PASO 4: OTROS CARGOS --- */}
         {pasoActivo === 4 && (
           <Paso4OtrosCargos
+            estructuraSeleccionadaId={estructuraSeleccionadaId}
+            setEstructuraSeleccionadaId={setEstructuraSeleccionadaId}
+            metodoPrecio={metodoPrecio}
+            setMetodoPrecio={setMetodoPrecio}
+            opcionesAvanzadas={opcionesAvanzadas}
+            setOpcionesAvanzadas={setOpcionesAvanzadas}
+            incluirIva={incluirIva}
+            setIncluirIva={setIncluirIva}
+            tipoMoneda={tipoMoneda}
+            setTipoMoneda={setTipoMoneda}
+            valorDolar={valorDolar}
+            setValorDolar={setValorDolar}
+            ocultarDesglose={ocultarDesglose}
+            setOcultarDesglose={setOcultarDesglose}
+            descuento5={descuento5}
+            setDescuento5={setDescuento5}
+            descuento10={descuento10}
+            setDescuento10={setDescuento10}
+            cargosEditables={cargosEditables}
+            setCargosEditables={setCargosEditables}
+            conceptos={conceptos}
+            setConceptos={setConceptos}
             onAnterior={() => setPasoActivo(3)}
             onSiguiente={() => setPasoActivo(5)}
           />
@@ -214,6 +316,31 @@ export default function NuevoProyecto() {
         {/* --- PASO 5: CONFIRMACIÓN --- */}
         {pasoActivo === 5 && (
           <Paso5Confirmacion
+            datosContacto={datosContacto}
+            nombreProyecto={nombreProyecto}
+            nombreRecibo={nombreRecibo}
+            tarifaSeleccionada={tarifaSeleccionada}
+            numeroServicio={numeroServicio}
+            periodo={periodo}
+            consumos={consumos}
+            consumoPromedioKwh={consumoPromedioKwh}
+            pagoPromedioCFE={pagoPromedioCFE}
+            panelKey={panelKey}
+            cantPaneles={cantPaneles}
+            inversorKey={inversorKey}
+            cantInversores={cantInversores}
+            tamanoSistema={tamanoSistema}
+            produccion={produccion}
+            autoconsumo={autoconsumo}
+            nuevoPago={nuevoPago}
+            ahorro={ahorro}
+            conceptos={conceptos}
+            estructuraActual={estructuraActual}
+            cargosEditables={cargosEditables}
+            subtotalConDescuento={subtotalConDescuento}
+            granTotal={granTotal}
+            incluirIva={incluirIva}
+            tipoMoneda={tipoMoneda}
             onAnterior={() => setPasoActivo(4)}
             onFinalizar={() => alert('Proyecto creado con éxito')}
           />

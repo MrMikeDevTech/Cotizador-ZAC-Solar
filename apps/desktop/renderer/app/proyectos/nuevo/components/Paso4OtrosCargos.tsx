@@ -17,42 +17,116 @@ import {
   Financiamiento,
 } from './otros-cargos';
 
-interface Paso4OtrosCargosProps {
+export interface Paso4OtrosCargosProps {
+  // Estado controlado desde page.tsx
+  estructuraSeleccionadaId?: string | null;
+  setEstructuraSeleccionadaId?: (id: string | null) => void;
+  metodoPrecio?: MetodoPrecio;
+  setMetodoPrecio?: (metodo: MetodoPrecio) => void;
+  opcionesAvanzadas?: boolean;
+  setOpcionesAvanzadas?: (val: boolean) => void;
+  incluirIva?: boolean;
+  setIncluirIva?: (val: boolean) => void;
+  tipoMoneda?: TipoMoneda;
+  setTipoMoneda?: (val: TipoMoneda) => void;
+  valorDolar?: number;
+  setValorDolar?: (val: number) => void;
+  ocultarDesglose?: boolean;
+  setOcultarDesglose?: (val: boolean) => void;
+  descuento5?: boolean;
+  setDescuento5?: (val: boolean) => void;
+  descuento10?: boolean;
+  setDescuento10?: (val: boolean) => void;
+  cargosEditables?: CargoEditable[];
+  setCargosEditables?: React.Dispatch<React.SetStateAction<CargoEditable[]>>;
+  conceptos?: ConceptoCotizacion[];
+  setConceptos?: React.Dispatch<React.SetStateAction<ConceptoCotizacion[]>>;
+
   conceptosIniciales?: ConceptoCotizacion[];
   onSiguiente?: () => void;
   onAnterior?: () => void;
 }
 
 export default function Paso4OtrosCargos({
+  estructuraSeleccionadaId: controlledEstructuraId,
+  setEstructuraSeleccionadaId: setControlledEstructuraId,
+  metodoPrecio: controlledMetodoPrecio,
+  setMetodoPrecio: setControlledMetodoPrecio,
+  opcionesAvanzadas: controlledOpcionesAvanzadas,
+  setOpcionesAvanzadas: setControlledOpcionesAvanzadas,
+  incluirIva: controlledIncluirIva,
+  setIncluirIva: setControlledIncluirIva,
+  tipoMoneda: controlledTipoMoneda,
+  setTipoMoneda: setControlledTipoMoneda,
+  valorDolar: controlledValorDolar,
+  setValorDolar: setControlledValorDolar,
+  ocultarDesglose: controlledOcultarDesglose,
+  setOcultarDesglose: setControlledOcultarDesglose,
+  descuento5: controlledDescuento5,
+  setDescuento5: setControlledDescuento5,
+  descuento10: controlledDescuento10,
+  setDescuento10: setControlledDescuento10,
+  cargosEditables: controlledCargosEditables,
+  setCargosEditables: setControlledCargosEditables,
+  conceptos: controlledConceptos,
+  setConceptos: setControlledConceptos,
   conceptosIniciales,
   onSiguiente,
   onAnterior,
 }: Paso4OtrosCargosProps) {
-  // --- SELECCIÓN DE ESTRUCTURA ---
-  const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>('perforacion');
+  // --- FALLBACKS LOCALES SI NO SE CONTROLAN DESDE EL PADRE ---
+  const [localEstructuraId, setLocalEstructuraId] = useState<string | null>(null);
+  const [localMetodoPrecio, setLocalMetodoPrecio] = useState<MetodoPrecio>('unitario');
+  const [localOpcionesAvanzadas, setLocalOpcionesAvanzadas] = useState<boolean>(false);
+  const [localIncluirIva, setLocalIncluirIva] = useState<boolean>(false);
+  const [localTipoMoneda, setLocalTipoMoneda] = useState<TipoMoneda>('MXN');
+  const [localValorDolar, setLocalValorDolar] = useState<number>(16.90);
+  const [localOcultarDesglose, setLocalOcultarDesglose] = useState<boolean>(false);
+  const [localDescuento5, setLocalDescuento5] = useState<boolean>(false);
+  const [localDescuento10, setLocalDescuento10] = useState<boolean>(false);
+  const [localCargosEditables, setLocalCargosEditables] = useState<CargoEditable[]>([]);
+  const [localConceptos, setLocalConceptos] = useState<ConceptoCotizacion[]>(
+    conceptosIniciales || CONCEPTOS_COTIZACION_DEFECTO
+  );
+
+  // Estados efectivos (controlados o locales)
+  const estructuraSeleccionadaId = controlledEstructuraId !== undefined ? controlledEstructuraId : localEstructuraId;
+  const setEstructuraSeleccionadaId = setControlledEstructuraId || setLocalEstructuraId;
+
+  const metodoPrecio = controlledMetodoPrecio !== undefined ? controlledMetodoPrecio : localMetodoPrecio;
+  const setMetodoPrecio = setControlledMetodoPrecio || setLocalMetodoPrecio;
+
+  const opcionesAvanzadas = controlledOpcionesAvanzadas !== undefined ? controlledOpcionesAvanzadas : localOpcionesAvanzadas;
+  const setOpcionesAvanzadas = setControlledOpcionesAvanzadas || setLocalOpcionesAvanzadas;
+
+  const incluirIva = controlledIncluirIva !== undefined ? controlledIncluirIva : localIncluirIva;
+  const setIncluirIva = setControlledIncluirIva || setLocalIncluirIva;
+
+  const tipoMoneda = controlledTipoMoneda !== undefined ? controlledTipoMoneda : localTipoMoneda;
+  const setTipoMoneda = setControlledTipoMoneda || setLocalTipoMoneda;
+
+  const valorDolar = controlledValorDolar !== undefined ? controlledValorDolar : localValorDolar;
+  const setValorDolar = setControlledValorDolar || setLocalValorDolar;
+
+  const ocultarDesglose = controlledOcultarDesglose !== undefined ? controlledOcultarDesglose : localOcultarDesglose;
+  const setOcultarDesglose = setControlledOcultarDesglose || setLocalOcultarDesglose;
+
+  const descuento5 = controlledDescuento5 !== undefined ? controlledDescuento5 : localDescuento5;
+  const setDescuento5 = setControlledDescuento5 || setLocalDescuento5;
+
+  const descuento10 = controlledDescuento10 !== undefined ? controlledDescuento10 : localDescuento10;
+  const setDescuento10 = setControlledDescuento10 || setLocalDescuento10;
+
+  const cargosEditables = controlledCargosEditables !== undefined ? controlledCargosEditables : localCargosEditables;
+  const setCargosEditables = setControlledCargosEditables || setLocalCargosEditables;
+
+  const conceptos = controlledConceptos !== undefined ? controlledConceptos : localConceptos;
+  const setConceptos = setControlledConceptos || setLocalConceptos;
 
   // --- ESTADOS DE MODALES ---
   const [modalPrecioOpen, setModalPrecioOpen] = useState<boolean>(false);
   const [modalAjustesOpen, setModalAjustesOpen] = useState<boolean>(false);
   const [modalCargosOpen, setModalCargosOpen] = useState<boolean>(false);
-
-  // --- CONFIGURACIÓN DE COTIZACIÓN ---
-  const [metodoPrecio, setMetodoPrecio] = useState<MetodoPrecio>('unitario');
-  const [opcionesAvanzadas, setOpcionesAvanzadas] = useState<boolean>(false);
-  const [incluirIva, setIncluirIva] = useState<boolean>(false);
-  const [tipoMoneda, setTipoMoneda] = useState<TipoMoneda>('MXN');
-  const [valorDolar, setValorDolar] = useState<number>(16.90);
-  const [ocultarDesglose, setOcultarDesglose] = useState<boolean>(false);
-
-  // --- DESCUENTOS Y CARGOS ---
-  const [descuento5, setDescuento5] = useState<boolean>(false);
-  const [descuento10, setDescuento10] = useState<boolean>(false);
-  const [cargosEditables, setCargosEditables] = useState<CargoEditable[]>([]);
-
-  // --- CONCEPTOS DINÁMICOS DEL PROYECTO ---
-  const [conceptos, setConceptos] = useState<ConceptoCotizacion[]>(
-    conceptosIniciales || CONCEPTOS_COTIZACION_DEFECTO
-  );
 
   // --- CÁLCULOS DINÁMICOS ---
   const estructuraActual = useMemo(
@@ -101,7 +175,7 @@ export default function Paso4OtrosCargos({
 
   // --- HANDLERS ---
   const handleToggleEstructura = (id: string) => {
-    setEstructuraSeleccionadaId((prev) => (prev === id ? null : id));
+    setEstructuraSeleccionadaId(estructuraSeleccionadaId === id ? null : id);
   };
 
   const handleMargenPorcentajeChange = (id: string, nuevoMargen: number): void => {
@@ -225,9 +299,6 @@ export default function Paso4OtrosCargos({
         </div>
       </div>
 
-      {/* --- SIMULACIÓN DE FINANCIAMIENTO --- */}
-      <Financiamiento />
-
       {/* --- NAVEGACIÓN INFERIOR --- */}
       <div className="flex justify-end items-center gap-6 pt-6 mt-6 border-t border-gray-100">
         <button
@@ -240,7 +311,8 @@ export default function Paso4OtrosCargos({
         <button
           type="button"
           onClick={onSiguiente}
-          className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"        >
+          className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"
+        >
           Guardar y continuar a Confirmación
         </button>
       </div>

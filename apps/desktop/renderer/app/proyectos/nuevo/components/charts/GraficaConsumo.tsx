@@ -57,11 +57,16 @@ export default function GraficaConsumo({ consumos, tarifaSeleccionada }: Grafica
   const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
+
+    layout: {
+      padding: {
+        top: 50, 
+      }
+    },
+    
     plugins: {
       legend: {
-        position: 'top' as const,
-        align: 'end' as const,
-        labels: { usePointStyle: true, boxWidth: 8, font: { size: 12 } },
+        display: false, // ¡Apagamos la leyenda de Chart.js!
       },
       tooltip: {
         backgroundColor: 'rgba(255,255,255,0.9)',
@@ -77,6 +82,7 @@ export default function GraficaConsumo({ consumos, tarifaSeleccionada }: Grafica
         ticks: { font: { size: 10 }, color: '#6b7280' },
       },
       y: {
+        min: 0, // Mantenemos el inicio en 0
         title: {
           display: true,
           text: 'kWh',
@@ -91,7 +97,24 @@ export default function GraficaConsumo({ consumos, tarifaSeleccionada }: Grafica
   }), []);
 
   return (
-    <div className="w-full h-80">
+    // Agregamos 'relative' para que la leyenda flote dentro de este contenedor
+    <div className="relative w-full h-80 pt-4">
+      
+      {/* LEYENDA CUSTOM FLOTANTE */}
+      <div className="absolute top-0 right-2 flex flex-col gap-2 z-10">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full border-2 border-[#00388d] bg-white"></div>
+          <span className="text-sm text-gray-600">Consumo</span>
+        </div>
+        
+        {limiteActual !== null && limiteActual !== undefined && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full border-2 border-[#ef4444] bg-white"></div>
+            <span className="text-sm text-gray-600">Límite DAC</span>
+          </div>
+        )}
+      </div>
+
       <Line data={chartData} options={chartOptions} />
     </div>
   );

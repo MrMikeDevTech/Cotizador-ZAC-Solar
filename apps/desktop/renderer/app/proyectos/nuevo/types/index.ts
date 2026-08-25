@@ -68,3 +68,24 @@ export interface ConceptoCotizacion {
   margenPorcentaje: number;
 }
 
+// --- TIPOS PASO 5: CONFIRMACIÓN ---
+export interface DatosEmpresa {
+  nombre: string;
+  telefono: string;
+  localidad: string;
+  email: string;
+  descripcion: string;
+}
+
+export interface FilaRetornoInversion {
+  periodo: string;
+  consumoHistorico: number;
+  energiaGenerada: number;
+  diferencia: number;
+  nuevoConsumo: number;
+  bancoSolar: number;
+  nuevoPagoCFE: number;
+  pagoHistorico: number;
+  ahorroPeriodo: number;
+}
+
