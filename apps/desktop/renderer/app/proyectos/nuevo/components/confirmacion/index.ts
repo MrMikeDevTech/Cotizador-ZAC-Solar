@@ -1,0 +1,12 @@
+export { default as Card } from './Card';
+export { default as ResumenEmpresa } from './ResumenEmpresa';
+export { default as ResumenContactoConsumo } from './ResumenContactoConsumo';
+export { default as ResumenEquipo } from './ResumenEquipo';
+export { default as ResumenAhorro } from './ResumenAhorro';
+export { default as TablaConsumoHistorico } from './TablaConsumoHistorico';
+export { default as BeneficioAmbiental } from './BeneficioAmbiental';
+export { default as MetricasFinancieras } from './MetricasFinancieras';
+export { default as TablaRetornoInversion } from './TablaRetornoInversion';
+export { default as ResumenCotizacion } from './ResumenCotizacion';
+export { default as AccionesProyecto } from './AccionesProyecto';
+export * from './calculosConfirmacion';
