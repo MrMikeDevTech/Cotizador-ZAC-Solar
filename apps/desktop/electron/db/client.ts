@@ -1,4 +1,10 @@
-// TODO(Fase 3): conexión better-sqlite3 para datos locales.
-export function getDb(): never {
-  throw new Error("SQLite local aún no implementado (Fase 3)");
+import { app } from "electron";
+import path from "node:path";
+
+/**
+ * Ruta del archivo SQLite dentro del directorio de datos del usuario
+ * (persiste entre actualizaciones de la app; distinto por SO).
+ */
+export function resolverRutaBaseDatos(): string {
+  return path.join(app.getPath("userData"), "cotizador.db");
 }

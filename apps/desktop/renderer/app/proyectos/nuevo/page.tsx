@@ -17,16 +17,18 @@ import {
   MetodoPrecio,
   TipoMoneda,
 } from './types';
-import {
-  panelesData,
-  PAGO_MINIMO_CFE,
-  LISTA_ESTRUCTURAS,
-  CONCEPTOS_COTIZACION_DEFECTO,
-} from './constants';
+import { CONCEPTOS_COTIZACION_DEFECTO } from './constants';
+import { calcularPromedios, calcularDimensionamiento, calcularTotalesCotizacion } from '@cotizador/shared';
+import { useConfiguracion } from '../../../lib/ConfiguracionContext';
+import { api } from '../../../lib/api';
+import { useGuardarProyecto } from './hooks/useGuardarProyecto';
 
 export default function NuevoProyecto() {
+  const { paneles, inversores, estructuras, factores, tarifas, refrescar: refrescarConfig } = useConfiguracion();
+
   // --- CONTROL DE PASO ---
   const [pasoActivo, setPasoActivo] = useState(1);
+  const [cargandoProyecto, setCargandoProyecto] = useState(false);
 
   // --- ESTADOS PASO 1: CONTACTO ---
   const [datosContacto, setDatosContacto] = useState<DatosContacto>({
@@ -72,7 +74,7 @@ export default function NuevoProyecto() {
   const [periodo, setPeriodo] = useState('Bimestral');
 
   const [consumos, setConsumos] = useState<ConsumoPeriodo[]>(
-    Array(6).fill({ inicioStr: '', terminoStr: '', kwh: '', pago: '' })
+    Array.from({ length: 6 }, () => ({ inicioStr: '', terminoStr: '', kwh: '', pago: '' }))
   );
 
   // --- ESTADOS PASO 3: EQUIPO ---
@@ -88,54 +90,26 @@ export default function NuevoProyecto() {
   const [ahorro, setAhorro] = useState(0);
 
   // Promedios calculados a partir de los consumos del Paso 2
-  const consumoPromedioKwh = useMemo(() => {
-    const sumaKwh = consumos.reduce((acc, curr) => acc + (Number(curr.kwh) || 0), 0);
-    return sumaKwh / 6 || 1; // Evitar división por cero
-  }, [consumos]);
-
-  const pagoPromedioCFE = useMemo(() => {
-    const sumaPago = consumos.reduce((acc, curr) => acc + (Number(curr.pago) || 0), 0);
-    return sumaPago / 6;
-  }, [consumos]);
+  const { consumoPromedioKwh, pagoPromedioCFE } = useMemo(
+    () => calcularPromedios(consumos),
+    [consumos]
+  );
 
   // Cálculos reactivos de producción y ahorro para el Paso 3
   useEffect(() => {
-    const cantidad = Number(cantPaneles) || 0;
-    const panel = panelesData[panelKey];
-
-    if (!panel) {
-      setTamanoSistema(0);
-      setProduccion(0);
-      setAutoconsumo(0);
-      setNuevoPago(0);
-      setAhorro(0);
-      return;
-    }
-
-    const totalWatts = cantidad * panel.watts * panel.factorBifacial;
-    setTamanoSistema(totalWatts);
-
-    const produccionBimestral = totalWatts * 0.24725;
-    setProduccion(produccionBimestral);
-
-    const porcentaje = cantidad > 0 ? (produccionBimestral / consumoPromedioKwh) * 100 : 0;
-    setAutoconsumo(porcentaje);
-
-    if (cantidad > 0) {
-      if (porcentaje >= 100) {
-        setNuevoPago(PAGO_MINIMO_CFE);
-        setAhorro(pagoPromedioCFE - PAGO_MINIMO_CFE);
-      } else {
-        const proporcionPago =
-          (1 - porcentaje / 100) * (pagoPromedioCFE - PAGO_MINIMO_CFE) + PAGO_MINIMO_CFE;
-        setNuevoPago(proporcionPago);
-        setAhorro(pagoPromedioCFE - proporcionPago);
-      }
-    } else {
-      setNuevoPago(0);
-      setAhorro(0);
-    }
-  }, [panelKey, cantPaneles, consumoPromedioKwh, pagoPromedioCFE]);
+    const resultado = calcularDimensionamiento({
+      panel: paneles[panelKey],
+      cantPaneles: Number(cantPaneles) || 0,
+      consumoPromedioKwh,
+      pagoPromedioCFE,
+      factores,
+    });
+    setTamanoSistema(resultado.tamanoSistema);
+    setProduccion(resultado.produccion);
+    setAutoconsumo(resultado.autoconsumo);
+    setNuevoPago(resultado.nuevoPago);
+    setAhorro(resultado.ahorro);
+  }, [panelKey, cantPaneles, consumoPromedioKwh, pagoPromedioCFE, paneles, factores]);
 
   // --- ESTADOS PASO 4: OTROS CARGOS & COTIZACIÓN ---
   const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>(null);
@@ -174,41 +148,171 @@ export default function NuevoProyecto() {
 
   // Cálculos dinámicos de cotización compartidos entre Paso 4 y Paso 5
   const estructuraActual = useMemo(
-    () => LISTA_ESTRUCTURAS.find((e) => e.id === estructuraSeleccionadaId),
-    [estructuraSeleccionadaId]
+    () => estructuras.find((e) => e.id === estructuraSeleccionadaId),
+    [estructuraSeleccionadaId, estructuras]
   );
   const precioEstructura = estructuraActual ? estructuraActual.precio : 0;
 
-  const subtotalConceptos = useMemo(
+  const totalesCotizacion = useMemo(
     () =>
-      conceptos.reduce(
-        (acc, curr) => acc + curr.costoBase * (1 + curr.margenPorcentaje / 100),
-        0
-      ),
-    [conceptos]
+      calcularTotalesCotizacion({
+        conceptos,
+        cargosEditables,
+        precioEstructura,
+        descuento5,
+        descuento10,
+        incluirIva,
+        ivaPorcentaje: factores.ivaPorcentaje,
+      }),
+    [conceptos, cargosEditables, precioEstructura, descuento5, descuento10, incluirIva, factores.ivaPorcentaje]
   );
+  const { subtotalConDescuento, granTotal } = totalesCotizacion;
 
-  const subtotalCargosEditables = useMemo(
-    () => cargosEditables.reduce((acc, curr) => acc + (Number(curr.monto) || 0), 0),
-    [cargosEditables]
+  // Línea de "límite DAC" de la gráfica de proyección: monto real derivado de la
+  // tarifa contratada, en vez del valor hardcodeado que tenía antes GraficaProyeccion.
+  const limiteDacKwh = useMemo(
+    () => tarifas.find((t) => t.codigo === tarifaSeleccionada)?.limiteDac ?? null,
+    [tarifas, tarifaSeleccionada]
   );
+  const costoPromedioKwh = consumoPromedioKwh > 0 ? pagoPromedioCFE / consumoPromedioKwh : 0;
 
-  const subtotalGeneral = subtotalConceptos + subtotalCargosEditables + precioEstructura;
+  // --- GUARDADO CONTRA EL BACKEND ---
+  const { proyectoId, setProyectoId, guardando, error: errorGuardado, guardar } = useGuardarProyecto();
 
-  let porcentajeDescuento = 0;
-  if (descuento5) porcentajeDescuento += 5;
-  if (descuento10) porcentajeDescuento += 10;
+  const datosParaGuardar = () => ({
+    datosContacto,
+    nombreProyecto,
+    localidadConsumo,
+    hilos,
+    nombreRecibo,
+    numeroServicio,
+    ivaCFE,
+    porcentajeDap,
+    usarNuevaTarifa,
+    tarifaSeleccionada,
+    aplicarDac,
+    aplicarDap,
+    fechaInicio,
+    periodo,
+    consumos,
+    panelKey,
+    cantPaneles,
+    inversorKey,
+    cantInversores,
+    estructuraSeleccionadaId,
+    metodoPrecio,
+    incluirIva,
+    tipoMoneda,
+    valorDolar,
+    ocultarDesglose,
+    descuento5,
+    descuento10,
+    cargosEditables,
+    conceptos,
+    pasoActual: pasoActivo,
+  });
 
-  const montoDescuento = subtotalGeneral * (porcentajeDescuento / 100);
-  const subtotalConDescuento = subtotalGeneral - montoDescuento;
+  const handleGuardarBorrador = async () => {
+    await guardar(datosParaGuardar(), 'borrador');
+  };
 
-  const montoIVA = incluirIva ? subtotalConDescuento * 0.16 : 0;
-  const granTotal = subtotalConDescuento + montoIVA;
+  const handleCrearProyecto = async () => {
+    await guardar(datosParaGuardar(), 'cotizado');
+  };
+
+  // --- REHIDRATACIÓN DE UN PROYECTO EXISTENTE (?id=) ---
+  useEffect(() => {
+    const idProyecto = new URLSearchParams(window.location.search).get('id');
+    if (!idProyecto) return;
+
+    setCargandoProyecto(true);
+    api
+      .get<any>(`/api/proyectos/${idProyecto}`)
+      .then((proyecto) => {
+        setProyectoId(proyecto.id);
+        setDatosContacto({
+          nombre: proyecto.contacto.nombre,
+          apellidoPaterno: proyecto.contacto.apellidoPaterno,
+          apellidoMaterno: proyecto.contacto.apellidoMaterno,
+          telefono: proyecto.contacto.telefono,
+          celular: proyecto.contacto.celular,
+          email: proyecto.contacto.email,
+          estado: proyecto.contacto.estado,
+          localidad: proyecto.contacto.localidad,
+          fuenteContacto: proyecto.contacto.fuenteContacto,
+          estatus: proyecto.contacto.estatus,
+          notas: proyecto.contacto.notas,
+          mostrarEmpresariales: proyecto.contacto.esEmpresa,
+          empresariales: {
+            rfc: proyecto.contacto.rfc,
+            cargo: proyecto.contacto.cargo,
+            razonSocial: proyecto.contacto.razonSocial,
+            actividadComercial: proyecto.contacto.actividadComercial,
+          },
+        });
+        setNombreProyecto(proyecto.nombre);
+        setLocalidadConsumo(proyecto.localidadConsumo);
+        setHilos(proyecto.hilos);
+        setNombreRecibo(proyecto.nombreRecibo);
+        setNumeroServicio(proyecto.numeroServicio);
+        setIvaCFE(proyecto.ivaCfe);
+        setPorcentajeDap(proyecto.porcentajeDap);
+        setUsarNuevaTarifa(proyecto.usarNuevaTarifa);
+        setTarifaSeleccionada(proyecto.tarifa);
+        setAplicarDac(proyecto.aplicarDac);
+        setAplicarDap(proyecto.aplicarDap);
+        setFechaInicio(proyecto.fechaInicio);
+        setPeriodo(proyecto.periodo);
+        setConsumos(
+          proyecto.consumos.map((c: any) => ({
+            inicioStr: c.inicioStr,
+            terminoStr: c.terminoStr,
+            kwh: String(c.kwh),
+            pago: String(c.pago),
+          }))
+        );
+
+        const cotizacion = proyecto.cotizaciones[0];
+        if (cotizacion) {
+          setPanelKey(cotizacion.panelClave);
+          setCantPaneles(cotizacion.cantPaneles);
+          setInversorKey(cotizacion.inversorClave);
+          setCantInversores(cotizacion.cantInversores);
+          setEstructuraSeleccionadaId(cotizacion.estructuraId);
+          setMetodoPrecio(cotizacion.metodoPrecio);
+          setIncluirIva(cotizacion.incluirIva);
+          setTipoMoneda(cotizacion.tipoMoneda);
+          setValorDolar(cotizacion.valorDolar);
+          setOcultarDesglose(cotizacion.ocultarDesglose);
+          setDescuento5(cotizacion.descuento5);
+          setDescuento10(cotizacion.descuento10);
+          setCargosEditables(cotizacion.cargos.map((c: any) => ({ id: c.id, nombre: c.nombre, monto: c.monto })));
+          setConceptos(
+            cotizacion.conceptos.map((c: any) => ({
+              id: c.id,
+              concepto: c.concepto,
+              costoBase: c.costoBase,
+              margenPorcentaje: c.margenPorcentaje,
+            }))
+          );
+        }
+
+        setPasoActivo(proyecto.pasoActual || 1);
+      })
+      .catch(() => {
+        // si no se puede cargar (backend caído o id inválido), el wizard sigue usable en blanco
+      })
+      .finally(() => setCargandoProyecto(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800 flex justify-center">
       <div className="bg-white w-full max-w-5xl rounded-3xl shadow-2xl p-6 md:p-10 relative h-max">
-        <h2 className="text-2xl font-bold text-[#00388d] mb-8">Nuevo Proyecto</h2>
+        <h2 className="text-2xl font-bold text-[#00388d] mb-8">
+          Nuevo Proyecto
+          {cargandoProyecto && <span className="ml-3 text-xs font-normal text-gray-400">Cargando proyecto…</span>}
+        </h2>
 
         {/* --- INDICADOR DE PASOS (Stepper) --- */}
         <Stepper pasoActivo={pasoActivo} onCambiarPaso={setPasoActivo} />
@@ -278,6 +382,11 @@ export default function NuevoProyecto() {
             ahorro={ahorro}
             pagoPromedioCFE={pagoPromedioCFE}
             consumos={consumos}
+            paneles={paneles}
+            inversores={inversores}
+            limiteDacKwh={limiteDacKwh}
+            costoPromedioKwh={costoPromedioKwh}
+            onActualizar={refrescarConfig}
             onAnterior={() => setPasoActivo(2)}
             onSiguiente={() => setPasoActivo(4)}
           />
@@ -286,6 +395,7 @@ export default function NuevoProyecto() {
         {/* --- PASO 4: OTROS CARGOS --- */}
         {pasoActivo === 4 && (
           <Paso4OtrosCargos
+            estructuras={estructuras}
             estructuraSeleccionadaId={estructuraSeleccionadaId}
             setEstructuraSeleccionadaId={setEstructuraSeleccionadaId}
             metodoPrecio={metodoPrecio}
@@ -341,8 +451,14 @@ export default function NuevoProyecto() {
             granTotal={granTotal}
             incluirIva={incluirIva}
             tipoMoneda={tipoMoneda}
+            limiteDacKwh={limiteDacKwh}
+            costoPromedioKwh={costoPromedioKwh}
+            proyectoId={proyectoId}
+            guardando={guardando}
+            errorGuardado={errorGuardado}
             onAnterior={() => setPasoActivo(4)}
-            onFinalizar={() => alert('Proyecto creado con éxito')}
+            onGuardarBorrador={handleGuardarBorrador}
+            onFinalizar={handleCrearProyecto}
           />
         )}
       </div>

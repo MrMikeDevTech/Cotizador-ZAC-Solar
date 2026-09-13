@@ -13,6 +13,10 @@ interface GraficaProyeccionProps {
   autoconsumo: number;
   ahorro: number;
   pagoMinimo?: number;
+  /** Límite de kWh de la tarifa contratada (limitesDACTarifas). Si no se conoce, la línea de límite DAC no se dibuja. */
+  limiteDacKwh?: number | null;
+  /** Costo promedio por kWh (pagoPromedioCFE / consumoPromedioKwh) para convertir el límite DAC a un monto. */
+  costoPromedioKwh?: number;
 }
 
 export default function GraficaProyeccion({
@@ -20,6 +24,8 @@ export default function GraficaProyeccion({
   autoconsumo,
   ahorro,
   pagoMinimo = PAGO_MINIMO_CFE,
+  limiteDacKwh = null,
+  costoPromedioKwh = 0,
 }: GraficaProyeccionProps) {
   const consumosVolteados = useMemo(() => [...consumos].reverse(), [consumos]);
 
@@ -29,53 +35,56 @@ export default function GraficaProyeccion({
       const pagoOriginal = Number(item.pago) || 0;
       return autoconsumo >= 100 ? pagoMinimo : Math.max(pagoOriginal - ahorro, pagoMinimo);
     });
-    
-    // AQUÍ ESTÁ LA MAGIA DE LA LÍNEA ROJA:
-    // Sustituye '(item as any).pagoDac' por la variable real donde guardes este costo.
-    const pagosDAC = consumosVolteados.map(item => Number((item as any).pagoDac) || 3800);
+
+    // Línea de referencia: monto al que se llegaría al alcanzar el límite de kWh de la tarifa DAC.
+    const pagoLimiteDac = limiteDacKwh != null ? limiteDacKwh * costoPromedioKwh : null;
+    const datasets = [
+      {
+        label: 'Pago histórico',
+        data: pagosHistoricos,
+        borderColor: '#1f2937',
+        backgroundColor: '#fff',
+        pointBorderColor: '#1f2937',
+        pointBackgroundColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0,
+      },
+      {
+        label: 'Nuevos pagos',
+        data: pagosNuevos,
+        borderColor: '#38bdf8',
+        backgroundColor: '#fff',
+        pointBorderColor: '#38bdf8',
+        pointBackgroundColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0,
+      },
+    ];
+
+    if (pagoLimiteDac != null) {
+      datasets.push({
+        label: 'Pago límite DAC',
+        data: consumosVolteados.map(() => pagoLimiteDac),
+        borderColor: '#ef4444',
+        backgroundColor: '#fff',
+        pointBorderColor: '#ef4444',
+        pointBackgroundColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        tension: 0,
+      });
+    }
 
     return {
       labels: consumosVolteados.map(item => item.inicioStr || '---'),
-      datasets: [
-        {
-          label: 'Pago histórico',
-          data: pagosHistoricos,
-          borderColor: '#1f2937',
-          backgroundColor: '#fff',
-          pointBorderColor: '#1f2937',
-          pointBackgroundColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0,
-        },
-        {
-          label: 'Nuevos pagos',
-          data: pagosNuevos,
-          borderColor: '#38bdf8', // Ajustado a un azul más claro como tu diseño
-          backgroundColor: '#fff',
-          pointBorderColor: '#38bdf8',
-          pointBackgroundColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0,
-        },
-        {
-          label: 'Pago límite DAC',
-          data: pagosDAC,
-          borderColor: '#ef4444',
-          backgroundColor: '#fff',
-          pointBorderColor: '#ef4444',
-          pointBackgroundColor: '#fff',
-          pointBorderWidth: 2,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          tension: 0,
-        },
-      ],
+      datasets,
     };
-  }, [consumosVolteados, autoconsumo, ahorro, pagoMinimo]);
+  }, [consumosVolteados, autoconsumo, ahorro, pagoMinimo, limiteDacKwh, costoPromedioKwh]);
 
   const chartOptions = useMemo(() => ({
     responsive: true,

@@ -5,6 +5,7 @@
   "description": "Monorepo Cotizador Solar — Electron + Next.js (static export) + Backend + Shared types",
   "devDependencies": {
     "@types/bun": "latest",
+    "node-gyp": "^13.0.2",
     "typescript": "5"
   },
   "workspaces": [
@@ -17,10 +18,16 @@
     "dev:backend": "bun run --filter @cotizador/backend dev",
     "build:renderer": "bun run --filter @cotizador/renderer build",
     "start": "bun run --filter @cotizador/desktop start",
-    "dist": "bun run --filter @cotizador/desktop dist"
+    "dist": "bun run --filter @cotizador/desktop dist",
+    "test": "bun test --path-ignore-patterns 'apps/backend/**' && bun run --filter @cotizador/backend test"
   },
-  "dependencies": {
-    "chart.js": "^4.5.1",
-    "react-chartjs-2": "^5.3.1"
+  "trustedDependencies": [
+    "@prisma/engines",
+    "better-sqlite3",
+    "electron-winstaller",
+    "prisma"
+  ],
+  "overrides": {
+    "better-sqlite3": "^13.0.3"
   }
 }

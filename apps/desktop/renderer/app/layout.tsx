@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from 'next/link';
+import { ConfiguracionProvider } from '../lib/ConfiguracionContext';
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -66,7 +67,7 @@ export default function RootLayout({
 
         {/* --- AQUÍ SE INYECTAN LAS PÁGINAS (Dashboard, Formularios, etc.) --- */}
         <main className="flex-1 p-4 md:p-8">
-          {children}
+          <ConfiguracionProvider>{children}</ConfiguracionProvider>
         </main>
 
       </body>

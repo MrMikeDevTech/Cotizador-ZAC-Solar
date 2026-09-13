@@ -1,6 +1,7 @@
 'use client';
 
 import { ConceptoCotizacion, EstructuraInstalacion, CargoEditable, TipoMoneda } from '../../types';
+import { convertirMoneda } from '@cotizador/shared';
 
 interface TablaCotizacionProps {
   conceptos: ConceptoCotizacion[];
@@ -44,7 +45,8 @@ export default function TablaCotizacion({
   onMargenMXNChange,
 }: TablaCotizacionProps) {
   const formatCurrency = (val: number): string => {
-    return `$${val.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${tipoMoneda}`;
+    const convertido = convertirMoneda(val, tipoMoneda, valorDolar);
+    return `$${convertido.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${tipoMoneda}`;
   };
 
   const calcularTotalConcepto = (item: ConceptoCotizacion): number => {
@@ -61,7 +63,7 @@ export default function TablaCotizacion({
       <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-base font-bold text-[#00388d]">Revisa tu cotización</h3>
-          <span className="text-xs text-gray-400 font-medium">1.63 dólar por watt</span>
+          <span className="text-xs text-gray-400 font-medium">Tipo de cambio: ${valorDolar.toFixed(2)} MXN/USD</span>
         </div>
 
         <div className="overflow-x-auto">
