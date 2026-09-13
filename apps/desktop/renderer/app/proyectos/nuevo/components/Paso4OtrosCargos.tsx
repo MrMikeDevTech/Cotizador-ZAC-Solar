@@ -6,15 +6,17 @@ import {
   TipoMoneda,
   CargoEditable,
   ConceptoCotizacion,
+  EstructuraInstalacion,
 } from '../types';
 import { LISTA_ESTRUCTURAS, CONCEPTOS_COTIZACION_DEFECTO } from '../constants';
+import { calcularTotalesCotizacion } from '@cotizador/shared';
+import { useConfiguracion } from '../../../../lib/ConfiguracionContext';
 import {
   ModalMetodoPrecio,
   ModalAjustesExtras,
   ModalCargosEditables,
   SelectorEstructura,
   TablaCotizacion,
-  Financiamiento,
 } from './otros-cargos';
 
 export interface Paso4OtrosCargosProps {
@@ -43,6 +45,7 @@ export interface Paso4OtrosCargosProps {
   setConceptos?: React.Dispatch<React.SetStateAction<ConceptoCotizacion[]>>;
 
   conceptosIniciales?: ConceptoCotizacion[];
+  estructuras?: EstructuraInstalacion[];
   onSiguiente?: () => void;
   onAnterior?: () => void;
 }
@@ -71,6 +74,7 @@ export default function Paso4OtrosCargos({
   conceptos: controlledConceptos,
   setConceptos: setControlledConceptos,
   conceptosIniciales,
+  estructuras = LISTA_ESTRUCTURAS,
   onSiguiente,
   onAnterior,
 }: Paso4OtrosCargosProps) {
@@ -130,48 +134,27 @@ export default function Paso4OtrosCargos({
 
   // --- CÁLCULOS DINÁMICOS ---
   const estructuraActual = useMemo(
-    () => LISTA_ESTRUCTURAS.find((e) => e.id === estructuraSeleccionadaId),
-    [estructuraSeleccionadaId]
+    () => estructuras.find((e) => e.id === estructuraSeleccionadaId),
+    [estructuraSeleccionadaId, estructuras]
   );
   const precioEstructura = estructuraActual ? estructuraActual.precio : 0;
 
-  const subtotalConceptos = useMemo(
+  const { factores } = useConfiguracion();
+
+  const totales = useMemo(
     () =>
-      conceptos.reduce(
-        (acc, curr) => acc + curr.costoBase * (1 + curr.margenPorcentaje / 100),
-        0
-      ),
-    [conceptos]
+      calcularTotalesCotizacion({
+        conceptos,
+        cargosEditables,
+        precioEstructura,
+        descuento5,
+        descuento10,
+        incluirIva,
+        ivaPorcentaje: factores.ivaPorcentaje,
+      }),
+    [conceptos, cargosEditables, precioEstructura, descuento5, descuento10, incluirIva, factores.ivaPorcentaje]
   );
-
-  const subtotalCargosEditables = useMemo(
-    () => cargosEditables.reduce((acc, curr) => acc + (Number(curr.monto) || 0), 0),
-    [cargosEditables]
-  );
-
-  const subtotalGeneral = subtotalConceptos + subtotalCargosEditables + precioEstructura;
-
-  let porcentajeDescuento = 0;
-  if (descuento5) porcentajeDescuento += 5;
-  if (descuento10) porcentajeDescuento += 10;
-
-  const montoDescuento = subtotalGeneral * (porcentajeDescuento / 100);
-  const subtotalConDescuento = subtotalGeneral - montoDescuento;
-
-  const montoIVA = incluirIva ? subtotalConDescuento * 0.16 : 0;
-  const granTotal = subtotalConDescuento + montoIVA;
-
-  const utilidadTotalMXN = useMemo(
-    () =>
-      conceptos.reduce(
-        (acc, item) => acc + item.costoBase * (item.margenPorcentaje / 100),
-        0
-      ),
-    [conceptos]
-  );
-
-  const porcentajeUtilidadTotal =
-    subtotalConceptos > 0 ? (utilidadTotalMXN / subtotalConceptos) * 100 : 0;
+  const { subtotalConDescuento, granTotal, utilidadTotalMXN, porcentajeUtilidadTotal } = totales;
 
   // --- HANDLERS ---
   const handleToggleEstructura = (id: string) => {
@@ -267,7 +250,7 @@ export default function Paso4OtrosCargos({
         {/* COLUMNA IZQUIERDA: Estructuras y Cargos */}
         <div className="lg:col-span-4">
           <SelectorEstructura
-            estructuras={LISTA_ESTRUCTURAS}
+            estructuras={estructuras}
             estructuraSeleccionadaId={estructuraSeleccionadaId}
             onToggleEstructura={handleToggleEstructura}
             onAbrirModalCargos={() => setModalCargosOpen(true)}

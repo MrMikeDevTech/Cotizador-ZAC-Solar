@@ -1,9 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { estadosMexico, localidadesPorEstado, fuentesContacto, estatusContacto } from '../constants';
 import { DatosContacto } from '../types';
+import { api } from '../../../../lib/api';
+
+interface ContactoExistente {
+  id: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  telefono: string;
+  celular: string;
+  email: string;
+  estado: string;
+  localidad: string;
+  fuenteContacto: string;
+  estatus: string;
+  notas: string;
+  esEmpresa: boolean;
+  rfc: string;
+  cargo: string;
+  razonSocial: string;
+  actividadComercial: string;
+}
 
 interface Paso1ContactoProps {
   datosContacto?: DatosContacto;
@@ -23,7 +44,54 @@ export default function Paso1Contacto({
     datosContacto?.estado ?? ''
   );
 
+  const [contactosExistentes, setContactosExistentes] = useState<ContactoExistente[]>([]);
+  const [contactoExistenteId, setContactoExistenteId] = useState(datosContacto?.contactoExistenteId ?? '');
+
+  useEffect(() => {
+    api
+      .get<ContactoExistente[]>('/api/contactos')
+      .then(setContactosExistentes)
+      .catch(() => setContactosExistentes([]));
+  }, []);
+
   const localidadesSugeridas = localidadesPorEstado[estadoSeleccionado] || [];
+
+  const handleSeleccionarContactoExistente = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+    setContactoExistenteId(id);
+
+    if (!id) {
+      onActualizarDatos?.({ contactoExistenteId: undefined });
+      return;
+    }
+
+    const contacto = contactosExistentes.find((c) => c.id === id);
+    if (!contacto) return;
+
+    setEstadoSeleccionado(contacto.estado);
+    setMostrarEmpresariales(contacto.esEmpresa);
+    onActualizarDatos?.({
+      contactoExistenteId: contacto.id,
+      nombre: contacto.nombre,
+      apellidoPaterno: contacto.apellidoPaterno,
+      apellidoMaterno: contacto.apellidoMaterno,
+      telefono: contacto.telefono,
+      celular: contacto.celular,
+      email: contacto.email,
+      estado: contacto.estado,
+      localidad: contacto.localidad,
+      fuenteContacto: contacto.fuenteContacto,
+      estatus: contacto.estatus,
+      notas: contacto.notas,
+      mostrarEmpresariales: contacto.esEmpresa,
+      empresariales: {
+        rfc: contacto.rfc,
+        cargo: contacto.cargo,
+        razonSocial: contacto.razonSocial,
+        actividadComercial: contacto.actividadComercial,
+      },
+    });
+  };
 
   const handleEstadoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nuevoEstado = e.target.value;
@@ -38,11 +106,20 @@ export default function Paso1Contacto({
   };
 
   return (
-    <form className="space-y-8 animate-fade-in" onSubmit={(e) => e.preventDefault()}>
+    <form key={contactoExistenteId || 'nuevo'} className="space-y-8 animate-fade-in" onSubmit={(e) => e.preventDefault()}>
       <div className="w-full md:w-1/3">
         <label className="block text-xs text-gray-400 mb-1">Contacto</label>
-        <select className="w-full border-b border-gray-300 py-2 text-sm text-gray-700 bg-transparent focus:outline-none focus:border-[#00388d] cursor-pointer">
+        <select
+          value={contactoExistenteId}
+          onChange={handleSeleccionarContactoExistente}
+          className="w-full border-b border-gray-300 py-2 text-sm text-gray-700 bg-transparent focus:outline-none focus:border-[#00388d] cursor-pointer"
+        >
           <option value="">Seleccionar contacto existente</option>
+          {contactosExistentes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {[c.nombre, c.apellidoPaterno, c.apellidoMaterno].filter(Boolean).join(' ')}
+            </option>
+          ))}
         </select>
       </div>
 

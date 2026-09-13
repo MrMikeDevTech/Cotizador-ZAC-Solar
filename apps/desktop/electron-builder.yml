@@ -3,10 +3,28 @@ productName: Cotizador
 copyright: Copyright © 2026 MrMikeDev
 directories:
   output: release
+# main.js/preload.js ya son bundles (bun build) con @cotizador/backend y
+# @cotizador/shared incluidos; solo los módulos nativos/binarios de Prisma
+# quedan como dependencias reales en node_modules (ver npmRebuild/asarUnpack).
 files:
-  - electron/**/*.ts
+  - electron/dist/**/*
   - renderer/out/**/*
   - package.json
+  - node_modules/better-sqlite3/**/*
+  - node_modules/@prisma/client/**/*
+  - node_modules/@prisma/adapter-better-sqlite3/**/*
+  - node_modules/bindings/**/*
+  - node_modules/file-uri-to-path/**/*
+# Copia las migraciones de Prisma (SQL, no código) como recurso aparte —
+# resolveMigrationsDir() en main.ts las busca en resources/backend-prisma-migrations.
+extraResources:
+  - from: ../backend/prisma/migrations
+    to: backend-prisma-migrations
+# better-sqlite3 es un módulo nativo: no puede vivir dentro del asar y debe
+# recompilarse contra el ABI de Electron (no el de Node/Bun usado en desarrollo).
+asarUnpack:
+  - node_modules/better-sqlite3/**/*
+npmRebuild: true
 win:
   target: nsis
 nsis:

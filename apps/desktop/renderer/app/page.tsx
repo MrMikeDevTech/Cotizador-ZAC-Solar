@@ -1,13 +1,16 @@
-'use client'; 
+'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link'; // <-- IMPORTANTE: Importamos Link para navegar
+import { api } from '../lib/api';
 
-// --- DATOS DE EJEMPLO (Vacíos) ---
-const datosTareas = {
-  'En curso': [],
-  'Vencidas': [], 
-};
+interface Tarea {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  fechaVencimiento: string | null;
+  completada: boolean;
+}
 
 const datosProyectos = {
   'Desarrollo': [],
@@ -19,6 +22,20 @@ const datosProyectos = {
 export default function Home() {
   const [tabTareaActiva, setTabTareaActiva] = useState<'En curso' | 'Vencidas'>('En curso');
   const [tabProyectoActivo, setTabProyectoActivo] = useState<'Desarrollo' | 'Enviados' | 'Vendidos' | 'Perdidos'>('Desarrollo');
+  const [tareas, setTareas] = useState<Tarea[]>([]);
+
+  useEffect(() => {
+    api
+      .get<Tarea[]>('/api/tareas?completada=false')
+      .then(setTareas)
+      .catch(() => setTareas([]));
+  }, []);
+
+  const ahora = Date.now();
+  const datosTareas = {
+    'En curso': tareas.filter((t) => !t.fechaVencimiento || new Date(t.fechaVencimiento).getTime() >= ahora),
+    'Vencidas': tareas.filter((t) => t.fechaVencimiento && new Date(t.fechaVencimiento).getTime() < ahora),
+  };
 
   return (
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800">
@@ -63,11 +80,13 @@ export default function Home() {
             
             <div className="space-y-4 mt-2 h-[220px] overflow-y-auto pr-2">
               {datosTareas[tabTareaActiva].length > 0 ? (
-                datosTareas[tabTareaActiva].map((tarea: any) => (
+                datosTareas[tabTareaActiva].map((tarea) => (
                   <div key={tarea.id} className="flex justify-between items-center text-sm border-b border-gray-100 pb-3">
                     <div>
-                      <p><span className="font-semibold">{tarea.usuario}:</span> {tarea.accion}</p>
-                      <p className="text-gray-500 text-xs mt-1">{tarea.fecha}</p>
+                      <p className="font-semibold">{tarea.titulo}</p>
+                      <p className="text-gray-500 text-xs mt-1">
+                        {tarea.fechaVencimiento ? new Date(tarea.fechaVencimiento).toLocaleDateString('es-MX') : 'Sin fecha'}
+                      </p>
                     </div>
                     <Link href="#" className="text-blue-600 font-semibold hover:underline">Ver</Link>
                   </div>

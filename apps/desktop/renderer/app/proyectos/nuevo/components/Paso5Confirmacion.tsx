@@ -67,7 +67,13 @@ export interface Paso5ConfirmacionProps {
   empresa?: DatosEmpresa;
 
   // Acciones / Navegación
+  limiteDacKwh?: number | null;
+  costoPromedioKwh?: number;
+  proyectoId?: string;
+  guardando?: boolean;
+  errorGuardado?: string | null;
   onAnterior?: () => void;
+  onGuardarBorrador?: () => void;
   onFinalizar?: () => void;
   onDescargarCotizacion?: () => void;
 }
@@ -99,7 +105,13 @@ export default function Paso5Confirmacion({
   incluirIva = false,
   tipoMoneda = 'MXN',
   empresa,
+  limiteDacKwh = null,
+  costoPromedioKwh = 0,
+  proyectoId,
+  guardando = false,
+  errorGuardado = null,
   onAnterior,
+  onGuardarBorrador,
   onFinalizar,
   onDescargarCotizacion,
 }: Paso5ConfirmacionProps) {
@@ -185,6 +197,8 @@ export default function Paso5Confirmacion({
           consumos={consumos}
           autoconsumo={autoconsumo}
           ahorro={ahorro}
+          limiteDacKwh={limiteDacKwh}
+          costoPromedioKwh={costoPromedioKwh}
         />
       </Card>
 
@@ -229,7 +243,14 @@ export default function Paso5Confirmacion({
 
       {/* 12. PROYECTO, DOCUMENTOS Y BOTONES DE FINALIZACIÓN */}
       <AccionesProyecto
+        proyectoId={proyectoId}
+        panelClave={panelKey}
+        inversorClave={inversorKey}
+        nombreProyecto={nombreProyecto}
+        guardando={guardando}
+        errorGuardado={errorGuardado}
         onAnterior={onAnterior}
+        onGuardarBorrador={onGuardarBorrador}
         onFinalizar={onFinalizar}
         onDescargarCotizacion={onDescargarCotizacion}
       />

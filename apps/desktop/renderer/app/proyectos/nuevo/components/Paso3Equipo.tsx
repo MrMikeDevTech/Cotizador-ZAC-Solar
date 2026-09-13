@@ -1,6 +1,6 @@
 'use client';
 
-import { ConsumoPeriodo } from '../types';
+import { ConsumoPeriodo, PanelData, InversorData } from '../types';
 import { panelesData, inversoresData } from '../constants';
 import GraficaProyeccion from './charts/GraficaProyeccion';
 
@@ -21,6 +21,11 @@ interface Paso3EquipoProps {
   ahorro: number;
   pagoPromedioCFE: number;
   consumos: ConsumoPeriodo[];
+  paneles?: Record<string, PanelData>;
+  inversores?: Record<string, InversorData>;
+  onActualizar?: () => void;
+  limiteDacKwh?: number | null;
+  costoPromedioKwh?: number;
 
   onAnterior: () => void;
   onSiguiente: () => void;
@@ -42,6 +47,11 @@ export default function Paso3Equipo({
   ahorro,
   pagoPromedioCFE,
   consumos,
+  paneles = panelesData,
+  inversores = inversoresData,
+  onActualizar,
+  limiteDacKwh = null,
+  costoPromedioKwh = 0,
   onAnterior,
   onSiguiente,
 }: Paso3EquipoProps) {
@@ -88,7 +98,7 @@ export default function Paso3Equipo({
             <option value="" disabled hidden>
               Selecciona un panel...
             </option>
-            {Object.entries(panelesData).map(([key, data]) => (
+            {Object.entries(paneles).map(([key, data]) => (
               <option key={key} value={key}>
                 {data.nombre}
               </option>
@@ -137,7 +147,7 @@ export default function Paso3Equipo({
             <option value="" disabled hidden>
               Selecciona un inversor...
             </option>
-            {Object.entries(inversoresData).map(([key, data]) => (
+            {Object.entries(inversores).map(([key, data]) => (
               <option key={key} value={key}>
                 {data.nombre}
               </option>
@@ -162,6 +172,7 @@ export default function Paso3Equipo({
         <div>
           <button
             type="button"
+            onClick={onActualizar}
             className="border border-[#00388d] text-[#00388d] hover:bg-blue-50 px-6 py-2 rounded-full text-sm font-semibold transition-colors cursor-pointer"
           >
             Actualizar
@@ -216,7 +227,13 @@ export default function Paso3Equipo({
             : 'Periodo de pagos'}
         </p>
 
-        <GraficaProyeccion consumos={consumos} autoconsumo={autoconsumo} ahorro={ahorro} />
+        <GraficaProyeccion
+          consumos={consumos}
+          autoconsumo={autoconsumo}
+          ahorro={ahorro}
+          limiteDacKwh={limiteDacKwh}
+          costoPromedioKwh={costoPromedioKwh}
+        />
       </div>
 
       <div className="flex justify-end items-center gap-6 pt-8 border-t border-gray-100 mt-8">

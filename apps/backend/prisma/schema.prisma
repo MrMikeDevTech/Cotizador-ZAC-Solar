@@ -1,0 +1,306 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ─────────────────────────────────────────────────────────
+// CATÁLOGO / CONFIGURACIÓN (hoy hardcodeado en constants/index.ts)
+// ─────────────────────────────────────────────────────────
+
+model Empresa {
+  id          String   @id @default("1")
+  nombre      String
+  telefono    String   @default("")
+  localidad   String   @default("")
+  email       String   @default("")
+  descripcion String   @default("")
+  rfc         String?
+  logoPath    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FactoresCalculo {
+  id                    String   @id @default("1")
+  factorProduccion      Float
+  pagoMinimoCfe         Float
+  ivaPorcentaje         Float
+  inflacionCfe          Float
+  factorCo2             Float
+  factorArboles         Float
+  factorKmAuto          Float
+  areaPorPanel          Float
+  factoresEstacionales  String // JSON: number[6]
+  precioPanelDefault    Float
+  precioInversorDefault Float
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Panel {
+  id              String    @id @default(uuid())
+  clave           String    @unique
+  nombre          String
+  watts           Float
+  factorBifacial  Float
+  precioUnitario  Float
+  activo          Boolean   @default(true)
+  orden           Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  cotizaciones Cotizacion[]
+}
+
+model Inversor {
+  id             String    @id @default(uuid())
+  clave          String    @unique
+  nombre         String
+  wattsMax       Float
+  precioUnitario Float
+  activo         Boolean   @default(true)
+  orden          Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  cotizaciones Cotizacion[]
+}
+
+model Estructura {
+  id        String    @id @default(uuid())
+  nombre    String
+  precio    Float
+  activo    Boolean   @default(true)
+  orden     Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  cotizaciones Cotizacion[]
+}
+
+model ConceptoPlantilla {
+  id               String    @id @default(uuid())
+  concepto         String
+  costoBase        Float
+  margenPorcentaje Float     @default(0)
+  orden            Int       @default(0)
+  activo           Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+}
+
+model Tarifa {
+  id        String   @id @default(uuid())
+  codigo    String   @unique
+  limiteDac Int?
+  esNueva   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Localidad {
+  id               String   @id @default(uuid())
+  estado           String
+  nombre           String
+  factorProduccion Float
+  horasSol         Float
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([estado, nombre])
+}
+
+model PlantillaDocumento {
+  id          String   @id @default(uuid())
+  tipo        String // 'ficha_panel' | 'ficha_inversor' | 'horas_sol' | 'contrato' | 'carta_poder'
+  nombre      String
+  rutaArchivo String
+  referenciaId String? // p.ej. clave del panel/inversor al que pertenece la ficha
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────
+// NEGOCIO
+// ─────────────────────────────────────────────────────────
+
+model Contacto {
+  id                 String    @id @default(uuid())
+  codigo             String    @unique
+  nombre             String
+  apellidoPaterno    String    @default("")
+  apellidoMaterno    String    @default("")
+  telefono           String    @default("")
+  celular            String    @default("")
+  email              String    @default("")
+  estado             String    @default("")
+  localidad          String    @default("")
+  fuenteContacto     String    @default("")
+  estatus            String    @default("")
+  notas              String    @default("")
+  esEmpresa          Boolean   @default(false)
+  rfc                String    @default("")
+  cargo              String    @default("")
+  razonSocial        String    @default("")
+  actividadComercial String    @default("")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  proyectos Proyecto[]
+  tareas    Tarea[]
+}
+
+model Proyecto {
+  id                 String    @id @default(uuid())
+  codigo             String    @unique
+  contactoId         String
+  contacto           Contacto  @relation(fields: [contactoId], references: [id])
+  nombre             String
+  localidadConsumo   String    @default("")
+  hilos              String    @default("1 hilo")
+  nombreRecibo       String    @default("")
+  numeroServicio     String    @default("")
+  tarifa             String    @default("1A")
+  usarNuevaTarifa    Boolean   @default(false)
+  ivaCfe             Float     @default(16)
+  aplicarDac         Boolean   @default(false)
+  aplicarDap         Boolean   @default(false)
+  porcentajeDap      String    @default("")
+  periodo            String    @default("Bimestral")
+  fechaInicio        String    @default("")
+  estatus            String    @default("borrador") // borrador | cotizado | enviado | vendido | perdido
+  pasoActual         Int       @default(1)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  consumos     ConsumoPeriodo[]
+  cotizaciones Cotizacion[]
+  tareas       Tarea[]
+  documentos   Documento[]
+}
+
+model ConsumoPeriodo {
+  id         String   @id @default(uuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  orden      Int // 0-5, 0 = periodo más reciente
+  inicioStr  String   @default("")
+  terminoStr String   @default("")
+  kwh        Float    @default(0)
+  pago       Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([proyectoId, orden])
+}
+
+model Cotizacion {
+  id         String   @id @default(uuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  version    Int      @default(1)
+
+  // Snapshot del equipo (trazabilidad vía FK opcional + valores congelados)
+  panelId          String?
+  panel            Panel?   @relation(fields: [panelId], references: [id])
+  panelClave       String   @default("")
+  panelNombre      String   @default("")
+  panelWatts       Float    @default(0)
+  cantPaneles      Int      @default(0)
+  inversorId       String?
+  inversor         Inversor? @relation(fields: [inversorId], references: [id])
+  inversorClave    String   @default("")
+  inversorNombre   String   @default("")
+  inversorWattsMax Float    @default(0)
+  cantInversores   Int      @default(0)
+  estructuraId     String?
+  estructura       Estructura? @relation(fields: [estructuraId], references: [id])
+  estructuraNombre String   @default("")
+  estructuraPrecio Float    @default(0)
+
+  // Snapshot de resultados
+  tamanoSistemaW    Float @default(0)
+  produccionPeriodo Float @default(0)
+  autoconsumoPct    Float @default(0)
+  nuevoPago         Float @default(0)
+  ahorroPeriodo     Float @default(0)
+  ahorroAnual       Float @default(0)
+  subtotalGeneral   Float @default(0)
+  montoDescuento    Float @default(0)
+  subtotalConDescuento Float @default(0)
+  montoIva          Float @default(0)
+  granTotal         Float @default(0)
+  roiTexto          String @default("")
+  tirPorcentaje     Float @default(0)
+  kgCo2             Float @default(0)
+  arboles           Int   @default(0)
+  kmAuto            Float @default(0)
+
+  // Flags de presentación
+  metodoPrecio     String  @default("unitario")
+  tipoMoneda       String  @default("MXN")
+  valorDolar       Float   @default(16.9)
+  incluirIva       Boolean @default(false)
+  ocultarDesglose  Boolean @default(false)
+  descuento5       Boolean @default(false)
+  descuento10      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conceptos CotizacionConcepto[]
+  cargos    CotizacionCargo[]
+}
+
+model CotizacionConcepto {
+  id               String     @id @default(uuid())
+  cotizacionId     String
+  cotizacion       Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  concepto         String
+  costoBase        Float
+  margenPorcentaje Float      @default(0)
+  orden            Int        @default(0)
+}
+
+model CotizacionCargo {
+  id           String     @id @default(uuid())
+  cotizacionId String
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+  nombre       String
+  monto        Float
+  orden        Int        @default(0)
+}
+
+model Tarea {
+  id               String    @id @default(uuid())
+  proyectoId       String?
+  proyecto         Proyecto? @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  contactoId       String?
+  contacto         Contacto? @relation(fields: [contactoId], references: [id], onDelete: Cascade)
+  titulo           String
+  descripcion      String    @default("")
+  fechaVencimiento DateTime?
+  completada       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Documento {
+  id           String   @id @default(uuid())
+  proyectoId   String
+  proyecto     Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  tipo         String
+  nombreArchivo String
+  ruta         String
+  generadoEn   DateTime @default(now())
+}
