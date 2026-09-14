@@ -18,16 +18,45 @@ packages/
 tsconfig.base.json
 ```
 
+## Requisitos
+
+- [Bun](https://bun.sh) — gestor de paquetes y runtime del monorepo.
+- **Windows únicamente, solo para `bun run dist`**: Visual Studio Build Tools con el
+  workload **"Desktop development with C++"**. `bun run dist` recompila
+  `better-sqlite3` (módulo nativo) contra el ABI de Electron vía `node-gyp`, que
+  necesita el compilador MSVC. Sin esto falla con
+  `Could not find any Visual Studio installation to use`. `bun run dev:backend` y
+  `bun run start` no lo necesitan (usan el binario ya compilado para Node/Bun).
+
+  Instalación rápida con winget:
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --silent `
+    --accept-package-agreements --accept-source-agreements `
+    --override "--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+  ```
+  O manualmente desde el
+  [instalador de Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022),
+  marcando el workload "Desktop development with C++".
+
 ## Primer arranque
 
 ```bash
 bun install
-cp apps/backend/.env.example apps/backend/.env   # DATABASE_URL="file:./dev.db"
 ```
+
+`bun install` genera automáticamente el Prisma Client (`postinstall` → `db:generate`).
+No hace falta crear un `.env`: `apps/backend/prisma.config.ts` usa `file:./dev.db`
+como valor por defecto si `DATABASE_URL` no está definida. Solo copia
+`apps/backend/.env.example` a `.env` si quieres apuntar el dev a otra ruta/archivo.
 
 Las migraciones y el seed de catálogos (paneles, inversores, estructuras, tarifas,
 factores de cálculo) corren automáticamente al iniciar el backend — no hace falta
 ningún paso manual de base de datos.
+
+En la app empaquetada (Electron) el `.db` no usa `DATABASE_URL` ni el `dev.db` local:
+`apps/desktop/electron/main.ts` fija la ruta en tiempo de ejecución con
+`app.getPath("userData")` (p. ej. `%APPDATA%\Cotizador\cotizador.db` en Windows),
+fuera de la carpeta de instalación — así el instalador/desinstalador nunca la toca.
 
 ## Comandos (Bun)
 
@@ -52,9 +81,10 @@ bun run dist               # empaqueta instalador (electron-builder)
 ## Notas de empaquetado
 
 - `better-sqlite3` es un módulo nativo: `bun run dist` lo recompila contra el ABI
-  de Electron (`npmRebuild`). Tras empaquetar, hay que volver a correr `bun install`
-  antes de continuar en modo desarrollo, porque el binario recompilado para
-  Electron no sirve para `bun run dev:backend`.
+  de Electron (`npmRebuild`), lo que requiere Visual Studio Build Tools instalado
+  (ver [Requisitos](#requisitos)). Tras empaquetar, hay que volver a correr
+  `bun install` antes de continuar en modo desarrollo, porque el binario
+  recompilado para Electron no sirve para `bun run dev:backend`.
 - El resto del backend (rutas, cálculos, Prisma Client generado) se compila con
   `bun build` en un único `electron/dist/main.js` — no requiere Node/TS en el
   equipo del cliente final.

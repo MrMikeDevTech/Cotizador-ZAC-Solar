@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { Hono } from "hono";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -15,18 +17,43 @@ const __dirname = path.dirname(__filename);
 // ---------------------------------------------------------------------------
 // Renderer de Next.js (export estático)
 //   - En desarrollo con "next dev": cargar desde ELECTRON_RENDERER_URL (ej. http://localhost:3000)
-//   - En producción/carpeta: cargar apps/desktop/renderer/out/index.html
+//   - En producción/carpeta: servir apps/desktop/renderer/out por HTTP local.
+//
+// El export estático de Next (App Router) no se puede cargar con loadFile()/
+// file://: los assets de _next usan rutas absolutas y la navegación entre
+// páginas hace fetch() de payloads RSC (.txt) con rutas relativas — ambas
+// cosas rompen bajo el esquema file:// (sin "origen" real, CORS/fetch fallan
+// en silencio y la ventana queda en blanco). Por eso se sirve el export desde
+// un servidor HTTP local (igual que el backend) y se carga con loadURL().
 // ---------------------------------------------------------------------------
 
-function resolveRendererPath(): string {
+// __dirname en dev es apps/desktop/electron/dist (salida de bun build);
+// hay que subir dos niveles para llegar a apps/desktop/renderer.
+function resolveRendererOutDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "renderer", "out")
+    : path.join(__dirname, "..", "..", "renderer", "out");
+}
+
+let servidorRenderer: ReturnType<typeof serve> | null = null;
+
+function iniciarServidorRenderer(): Promise<string> {
+  const rendererApp = new Hono();
+  rendererApp.use("*", serveStatic({ root: resolveRendererOutDir() }));
+
+  return new Promise((resolve) => {
+    servidorRenderer = serve(
+      { fetch: rendererApp.fetch, hostname: "127.0.0.1", port: 0 },
+      (info) => resolve(`http://127.0.0.1:${info.port}`),
+    );
+  });
+}
+
+async function resolveRendererBaseUrl(): Promise<string> {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) return devUrl;
 
-  const outDir = app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "renderer", "out")
-    : path.join(__dirname, "..", "renderer", "out");
-
-  const indexPath = path.join(outDir, "index.html");
+  const indexPath = path.join(resolveRendererOutDir(), "index.html");
   if (!fs.existsSync(indexPath)) {
     dialog.showErrorBox(
       "Cotizador — falta el frontend",
@@ -36,18 +63,14 @@ function resolveRendererPath(): string {
     app.quit();
     throw new Error("Renderer static export not found");
   }
-  return indexPath;
+  return iniciarServidorRenderer();
 }
+
+let rendererBaseUrl = "";
 
 function resolveImprimirUrl(tipo: string, proyectoId: string): string {
   const query = `?tipo=${encodeURIComponent(tipo)}&proyectoId=${encodeURIComponent(proyectoId)}`;
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (devUrl) return `${devUrl}/documentos/imprimir/${query}`;
-
-  const outDir = app.isPackaged
-    ? path.join(process.resourcesPath, "app.asar", "renderer", "out")
-    : path.join(__dirname, "..", "renderer", "out");
-  return `file://${path.join(outDir, "documentos", "imprimir", "index.html")}${query}`;
+  return `${rendererBaseUrl}/documentos/imprimir/${query}`;
 }
 
 /** Espera a que la vista de impresión marque `document.title = "LISTO"` (o "ERROR"). */
@@ -77,7 +100,7 @@ async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 8000): P
 function resolveMigrationsDir(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "backend-prisma-migrations")
-    : path.join(__dirname, "..", "..", "backend", "prisma", "migrations");
+    : path.join(__dirname, "..", "..", "..", "backend", "prisma", "migrations");
 }
 
 let apiBaseUrl = "";
@@ -124,14 +147,8 @@ function createWindow() {
   mainWindow.removeMenu();
   mainWindow.maximize();
 
-  const rendererPath = resolveRendererPath();
-  const isDevUrl = rendererPath.startsWith("http");
-
-  (isDevUrl
-    ? mainWindow.loadURL(rendererPath)
-    : mainWindow.loadFile(rendererPath)
-  ).catch((err) => {
-    console.error(`No se pudo cargar ${rendererPath}:`, err);
+  mainWindow.loadURL(rendererBaseUrl).catch((err) => {
+    console.error(`No se pudo cargar ${rendererBaseUrl}:`, err);
     app.quit();
   });
 
@@ -156,6 +173,8 @@ app.whenReady().then(async () => {
     return;
   }
 
+  rendererBaseUrl = await resolveRendererBaseUrl();
+
   createWindow();
 
   app.on("activate", () => {
@@ -171,6 +190,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   servidorApi?.close();
+  servidorRenderer?.close();
 });
 
 app.on("render-process-gone", (_event, _webContents, details) => {
