@@ -1,6 +1,6 @@
 {
   "name": "@cotizador/desktop",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Aplicación de escritorio Electron — Cotizador Solar",
   "author": "MrMikeDev",
@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@cotizador/backend": "workspace:*",
-    "@hono/node-server": "^2.1.1"
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.7"
   },
   "devDependencies": {
     "electron": "43.2.0",

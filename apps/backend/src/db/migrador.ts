@@ -23,7 +23,7 @@ export function ejecutarMigraciones(dbPath: string, migrationsDir?: string): voi
     `);
 
     if (!existsSync(carpetaMigraciones)) {
-      return;
+      throw new Error(`No se encontró la carpeta de migraciones: ${carpetaMigraciones}`);
     }
 
     const carpetas = readdirSync(carpetaMigraciones, { withFileTypes: true })
