@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link'; // <-- IMPORTANTE: Importamos Link para navegar
+import Link from 'next/link';
 import { api } from '../lib/api';
 
 interface Tarea {
@@ -46,8 +46,12 @@ export default function Home() {
         
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="text-center flex flex-col items-center mt-4">
-            <div className="w-40 h-40 bg-white rounded-full flex items-center justify-center text-gray-400 text-sm shadow-md border-4 border-white">
-              Logo Zac-Solar
+            <div className="w-36 h-36 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-md p-2">
+              <img 
+                src="/logo.jpeg" 
+                alt="Logo Zac-Solar" 
+                className="w-full h-full object-contain"
+              />
             </div>
             <h2 className="text-3xl font-bold text-white mt-4 tracking-wide drop-shadow-md leading-tight">
               El sol es<br/>nuestro aliado

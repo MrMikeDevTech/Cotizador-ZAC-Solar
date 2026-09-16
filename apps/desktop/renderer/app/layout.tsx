@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from 'next/link';
 import { ConfiguracionProvider } from '../lib/ConfiguracionContext';
 import "./globals.css";
+import { UserProvider } from './context/usercontext';
+import { UserSelector } from './components/UserSelector';
 
 export const metadata: Metadata = {
-  title: "Cotizador",
+  title: "Cotizador Zac-Solar",
   description: "Cotizador de productos",
 };
 
@@ -15,60 +17,81 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      {/* Agregamos las clases de Tailwind al body para el fondo y estructura general */}
       <body className="bg-[#8e94f2] m-0 p-0 min-h-screen">
         
-        {/* --- BARRA DE NAVEGACIÓN GLOBAL (Pegada al techo) --- */}
-        <nav className="bg-[#00388d] w-full px-8 py-4 rounded-b-2xl shadow-lg text-white flex flex-col md:flex-row items-center gap-8 relative z-50">
-          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-[#00388d] font-bold text-xs shrink-0">
-            Logo
-          </div>
-          
-          <div className="hidden md:flex flex-1 justify-between items-center text-sm w-full pr-4 lg:pr-4">
-            <Link href="/" className="font-semibold text-orange-200">Dashboard</Link>
-            <Link href="/contactos" className="hover:text-orange-200 transition-colors">Contacto</Link>
-            <Link href="/proyectos" className="hover:text-orange-200 transition-colors">Proyectos</Link>
-            <Link href="/funnel" className="hover:text-orange-200 transition-colors">Funnel de ventas</Link>
+        <UserProvider>
+          <ConfiguracionProvider>
             
-            <div className="relative group">
-              <button className="hover:text-orange-200 transition-colors py-2 cursor-pointer focus:outline-none">
-                CRM ▾
-              </button>
-              <div className="absolute left-0 mt-0 w-40 bg-white text-gray-800 rounded-lg shadow-xl hidden group-hover:block border border-gray-100 overflow-hidden">
-                <Link href="/crm/usuarios" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Usuarios</Link>
-                <Link href="/crm/tareas" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Tareas</Link>
-                <Link href="/crm/calendario" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Calendario</Link>
-                <Link href="/crm/reportes" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors">Reportes</Link>
+            {/* BARRA DE NAVEGACIÓN GLOBAL */}
+            <nav className="bg-[#00388d] w-full px-8 py-3 rounded-b-2xl shadow-lg text-white flex flex-col md:flex-row items-center gap-8 relative z-50">
+              
+              {/* Logo clickeable que te regresa al Dashboard */}
+              <Link href="/" className="flex items-center shrink-0 hover:opacity-90 transition-opacity">
+                <img 
+                  src="/logo.jpeg" 
+                  alt="Zac-Solar" 
+                  className="h-10 w-auto object-contain rounded-lg"
+                />
+              </Link>
+              
+              <div className="hidden md:flex flex-1 justify-between items-center text-sm w-full pr-4">
+                <Link href="/" className="hover:text-orange-200 transition-colors font-medium">
+                  Dashboard
+                </Link>
+                <Link href="/contactos" className="hover:text-orange-200 transition-colors font-medium">
+                  Contacto
+                </Link>
+                <Link href="/proyectos" className="hover:text-orange-200 transition-colors font-medium">
+                  Proyectos
+                </Link>
+                <Link href="/funnel" className="hover:text-orange-200 transition-colors font-medium">
+                  Funnel de ventas
+                </Link>
+                
+                {/* Menú CRM */}
+                <div className="relative group py-2">
+                  <button className="hover:text-orange-200 transition-colors cursor-pointer focus:outline-none flex items-center gap-1 font-medium">
+                    CRM ▾
+                  </button>
+                  <div className="absolute left-0 top-full pt-1 w-40 hidden group-hover:block">
+                    <div className="bg-white text-gray-800 rounded-lg shadow-xl border border-gray-100 overflow-hidden">
+                      <Link href="/crm/usuarios" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Usuarios</Link>
+                      <Link href="/crm/tareas" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Tareas</Link>
+                      <Link href="/crm/calendario" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Calendario</Link>
+                      <Link href="/crm/reportes" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors">Reportes</Link>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Menú Configuración */}
+                <div className="relative group py-2">
+                  <button className="hover:text-orange-200 transition-colors cursor-pointer focus:outline-none flex items-center gap-1 font-medium">
+                    Configuración ▾
+                  </button>
+                  <div className="absolute left-0 top-full pt-1 w-48 hidden group-hover:block">
+                    <div className="bg-white text-gray-800 rounded-lg shadow-xl border border-gray-100 overflow-hidden">
+                      <Link href="/config/empresa" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Datos de la empresa</Link>
+                      <Link href="/config/catalogo" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Catálogo</Link>
+                      <Link href="/config/utilidad" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Utilidad</Link>
+                      <Link href="/config/pago" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Método de pago</Link>
+                      <Link href="/config/cotizacion" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-100">Formato de Cotización</Link>
+                      <Link href="/config/facturacion" className="block px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors">Facturación</Link>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Perfil / Selector de Usuario */}
+                <UserSelector />
+
               </div>
-            </div>
+            </nav>
 
-            <div className="relative group">
-              <button className="hover:text-orange-200 transition-colors py-2 cursor-pointer focus:outline-none">
-                Configuracion ▾
-              </button>
-              <div className="absolute left-0 mt-0 w-48 bg-white text-gray-800 rounded-lg shadow-xl hidden group-hover:block border border-gray-100 overflow-hidden">
-                <Link href="/config/empresa" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Datos de la empresa</Link>
-                <Link href="/config/catalogo" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Catálogo</Link>
-                <Link href="/config/utilidad" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Utilidad</Link>
-                <Link href="/config/pago" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Método de pago</Link>
-                <Link href="/config/cotizacion" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors border-b border-gray-50">Formato de Cotización</Link>
-                <Link href="/config/facturacion" className="block px-4 py-3 hover:bg-blue-50 hover:text-blue-600 text-xs transition-colors">Facturación</Link>
-              </div>
-            </div>
+            <main className="flex-1 p-4 md:p-8">
+              {children}
+            </main>
 
-            <div className="pl-6 border-l border-blue-400 flex items-center">
-              <button className="flex items-center gap-2 hover:text-orange-200 transition-colors cursor-pointer">
-                <div className="w-8 h-8 bg-orange-200 text-[#00388d] rounded-full flex items-center justify-center font-bold text-sm shadow-sm">U</div>
-                <span className="font-medium">Usuario</span>
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        {/* --- AQUÍ SE INYECTAN LAS PÁGINAS (Dashboard, Formularios, etc.) --- */}
-        <main className="flex-1 p-4 md:p-8">
-          <ConfiguracionProvider>{children}</ConfiguracionProvider>
-        </main>
+          </ConfiguracionProvider>
+        </UserProvider>
 
       </body>
     </html>
