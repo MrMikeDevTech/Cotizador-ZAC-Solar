@@ -10,7 +10,7 @@
   },
   "workspaces": [
     "apps/*",
-    "apps/*/*",
+    "apps/desktop/renderer",
     "packages/*"
   ],
   "scripts": {
