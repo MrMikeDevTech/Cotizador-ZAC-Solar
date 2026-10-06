@@ -1,0 +1,19 @@
+{
+  "name": "@cotizador/cfe-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scraper de tarifas domésticas de CFE (app.cfe.mx) — Cotizador Solar",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "node-html-parser": "^9.0.4"
+  },
+  "devDependencies": {
+    "typescript": "5"
+  }
+}

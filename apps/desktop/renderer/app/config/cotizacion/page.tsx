@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import Card from '../../proyectos/nuevo/components/confirmacion/Card';
 import { api } from '../../../lib/api';
 
@@ -18,47 +19,89 @@ interface Factores {
   [key: string]: unknown;
 }
 
+interface Empresa {
+  nombre: string;
+  telefono: string;
+  localidad: string;
+  email: string;
+  descripcion: string;
+}
+
+const EMPRESA_VACIA: Empresa = { nombre: '', telefono: '', localidad: '', email: '', descripcion: '' };
+
 export default function ConfigCotizacion() {
   const [conceptos, setConceptos] = useState<Concepto[]>([]);
   const [factores, setFactores] = useState<Factores | null>(null);
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VACIA);
   const [cargando, setCargando] = useState(true);
   const [guardandoFactores, setGuardandoFactores] = useState(false);
+  const [guardandoEmpresa, setGuardandoEmpresa] = useState(false);
   const [mensaje, setMensaje] = useState<string | null>(null);
 
   useEffect(() => {
     api
-      .get<{ conceptos: Concepto[]; factores: Factores }>('/api/config')
+      .get<{ conceptos: Concepto[]; factores: Factores; empresa: Empresa | null }>('/api/config')
       .then((datos) => {
         setConceptos(datos.conceptos);
         setFactores(datos.factores);
+        setEmpresa(datos.empresa ?? EMPRESA_VACIA);
       })
-      .catch(() => setMensaje('No se pudo conectar con el backend local.'))
+      .catch(() => {
+        toast.error('No se pudo conectar con el backend local.');
+      })
       .finally(() => setCargando(false));
   }, []);
 
+  const guardarEmpresa = async () => {
+    setGuardandoEmpresa(true);
+    try {
+      const actualizada = await api.put<Empresa>('/api/config/empresa', empresa);
+      setEmpresa(actualizada);
+      toast.success('Datos de la empresa guardados.');
+    } catch {
+      toast.error('No se pudo guardar los datos de la empresa.');
+    } finally {
+      setGuardandoEmpresa(false);
+    }
+  };
+
   const guardarConcepto = async (concepto: Concepto) => {
-    await api.put(`/api/config/conceptos/${concepto.id}`, {
-      concepto: concepto.concepto,
-      costoBase: concepto.costoBase,
-      margenPorcentaje: concepto.margenPorcentaje,
-    });
-    setMensaje(`Concepto "${concepto.concepto}" guardado.`);
+    try {
+      await api.put(`/api/config/conceptos/${concepto.id}`, {
+        concepto: concepto.concepto,
+        costoBase: concepto.costoBase,
+        margenPorcentaje: concepto.margenPorcentaje,
+      });
+      toast.success(`Concepto "${concepto.concepto}" guardado.`);
+    } catch {
+      toast.error('No se pudo guardar el concepto.');
+    }
   };
 
   const eliminarConcepto = async (id: string) => {
-    await api.del(`/api/config/conceptos/${id}`);
-    setConceptos((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await api.del(`/api/config/conceptos/${id}`);
+      setConceptos((prev) => prev.filter((c) => c.id !== id));
+      toast.success('Concepto eliminado.');
+    } catch {
+      toast.error('No se pudo eliminar el concepto.');
+    }
   };
 
   const agregarConcepto = async () => {
-    const nuevo = await api.post<Concepto>('/api/config/conceptos', {
-      concepto: 'Nuevo concepto',
-      costoBase: 0,
-      margenPorcentaje: 0,
-      orden: conceptos.length,
-      activo: true,
-    });
-    setConceptos((prev) => [...prev, nuevo]);
+    try {
+      const nuevo = await api.post<Concepto>('/api/config/conceptos', {
+        concepto: 'Nuevo concepto',
+        costoBase: 0,
+        margenPorcentaje: 0,
+        orden: conceptos.length,
+        activo: true,
+      });
+      setConceptos((prev) => [...prev, nuevo]);
+      toast.success('Concepto creado.');
+    } catch {
+      toast.error('No se pudo crear el concepto.');
+    }
   };
 
   const guardarFactores = async () => {
@@ -67,9 +110,9 @@ export default function ConfigCotizacion() {
     try {
       const actualizado = await api.put<Factores>('/api/config/factores', factores);
       setFactores(actualizado);
-      setMensaje('Precios y ajustes guardados.');
+      toast.success('Precios y ajustes guardados.');
     } catch {
-      setMensaje('No se pudo guardar.');
+      toast.error('No se pudo guardar.');
     } finally {
       setGuardandoFactores(false);
     }
@@ -87,7 +130,73 @@ export default function ConfigCotizacion() {
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800 flex justify-center">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl p-6 md:p-10 relative h-max space-y-6">
         <h2 className="text-2xl font-bold text-[#00388d]">Formato de cotización</h2>
-        {mensaje && <p className="text-xs text-teal-600">{mensaje}</p>}
+
+        <Card title="Datos de la empresa">
+          {cargando ? (
+            <p className="text-sm text-gray-400">Cargando…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Nombre</label>
+                  <input
+                    type="text"
+                    value={empresa.nombre}
+                    onChange={(e) => setEmpresa({ ...empresa, nombre: e.target.value })}
+                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Teléfono</label>
+                  <input
+                    type="text"
+                    value={empresa.telefono}
+                    onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })}
+                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Localidad</label>
+                  <input
+                    type="text"
+                    value={empresa.localidad}
+                    onChange={(e) => setEmpresa({ ...empresa, localidad: e.target.value })}
+                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Correo electrónico</label>
+                  <input
+                    type="email"
+                    value={empresa.email}
+                    onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })}
+                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs text-gray-400 mb-1">Descripción</label>
+                  <textarea
+                    rows={3}
+                    value={empresa.descripcion}
+                    onChange={(e) => setEmpresa({ ...empresa, descripcion: e.target.value })}
+                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d] resize-y"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-4 pt-8 mt-6 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={guardarEmpresa}
+                  disabled={guardandoEmpresa}
+                  className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {guardandoEmpresa ? 'Guardando…' : 'Guardar'}
+                </button>
+              </div>
+            </>
+          )}
+        </Card>
 
         <Card title="Precios sugeridos y ajustes generales">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

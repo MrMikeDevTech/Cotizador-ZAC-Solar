@@ -22,6 +22,7 @@ import { calcularPromedios, calcularDimensionamiento, calcularTotalesCotizacion 
 import { useConfiguracion } from '../../../lib/ConfiguracionContext';
 import { api } from '../../../lib/api';
 import { useGuardarProyecto } from './hooks/useGuardarProyecto';
+import { useTarifasCfe } from './hooks/useTarifasCfe';
 
 export default function NuevoProyecto() {
   const { paneles, inversores, estructuras, factores, tarifas, refrescar: refrescarConfig } = useConfiguracion();
@@ -175,6 +176,18 @@ export default function NuevoProyecto() {
     [tarifas, tarifaSeleccionada]
   );
   const costoPromedioKwh = consumoPromedioKwh > 0 ? pagoPromedioCFE / consumoPromedioKwh : 0;
+
+  // Tarifas reales de CFE (packages/shared: calcularImporteCfe + calcularDetalleRetornoInversion).
+  // Si falta algún escalón (localidad sin resolver, periodo sin capturar, tarifa sin
+  // escalonamiento como DAC, o el backend sin ese mes todavía), el wizard sigue
+  // funcionando con el respaldo offline (promedio pago/kWh histórico) y Paso 5 avisa
+  // que el cálculo es aproximado.
+  const { escalonesPorPeriodo, completo: tarifasCompletas, cargando: cargandoTarifas } = useTarifasCfe(
+    consumos,
+    localidadConsumo,
+    tarifaSeleccionada
+  );
+  const calculoAproximado = consumoPromedioKwh > 0 && !cargandoTarifas && !tarifasCompletas;
 
   // --- GUARDADO CONTRA EL BACKEND ---
   const { proyectoId, setProyectoId, guardando, error: errorGuardado, guardar } = useGuardarProyecto();
@@ -453,6 +466,10 @@ export default function NuevoProyecto() {
             tipoMoneda={tipoMoneda}
             limiteDacKwh={limiteDacKwh}
             costoPromedioKwh={costoPromedioKwh}
+            pagoMinimoCfe={factores.pagoMinimoCfe}
+            factoresEstacionales={factores.factoresEstacionales}
+            escalonesPorPeriodo={escalonesPorPeriodo}
+            calculoAproximado={calculoAproximado}
             proyectoId={proyectoId}
             guardando={guardando}
             errorGuardado={errorGuardado}

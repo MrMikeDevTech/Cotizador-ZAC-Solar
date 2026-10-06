@@ -1,5 +1,7 @@
 'use client';
 
+import { ChevronRight } from 'lucide-react';
+import { Icono } from '../../../../components/Icono';
 import { ConceptoCotizacion, EstructuraInstalacion, CargoEditable, TipoMoneda } from '../../types';
 import { convertirMoneda } from '@cotizador/shared';
 
@@ -139,7 +141,10 @@ export default function TablaCotizacion({
                       colSpan={opcionesAvanzadas ? 4 : 2}
                       className="pb-3 pt-0 text-xs font-semibold text-gray-500 pl-3"
                     >
-                      <span className="text-[#00388d] mr-1">▶</span> {estructuraActual.nombre}
+                      <span className="inline-flex items-center gap-1">
+                        <Icono icon={ChevronRight} size={14} className="text-[#00388d]" />
+                        {estructuraActual.nombre}
+                      </span>
                     </td>
                   </tr>
                 </>

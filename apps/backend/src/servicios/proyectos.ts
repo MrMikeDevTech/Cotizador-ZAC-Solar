@@ -115,6 +115,13 @@ async function construirSnapshotCotizacion(tx: Cliente, payload: GuardarProyecto
   };
 }
 
+/** Resuelve el slug de fase a su fila. Falla claro si la fase no existe. */
+async function resolverFase(tx: Cliente, faseSlug: string) {
+  const fase = await tx.funnelFase.findUnique({ where: { slug: faseSlug } });
+  if (!fase || fase.deletedAt) throw new NoEncontradoError(`Fase ${faseSlug}`);
+  return fase;
+}
+
 export async function guardarProyecto(
   prisma: PrismaClient,
   payload: GuardarProyectoInput,
@@ -123,6 +130,7 @@ export async function guardarProyecto(
   return prisma.$transaction(async (tx) => {
     const contactoId = await resolverContacto(tx, payload);
     const snapshot = await construirSnapshotCotizacion(tx, payload);
+    const fase = await resolverFase(tx, payload.faseSlug);
 
     const datosProyecto = {
       contactoId,
@@ -139,7 +147,7 @@ export async function guardarProyecto(
       porcentajeDap: payload.datosProyecto.porcentajeDap,
       periodo: payload.datosProyecto.periodo,
       fechaInicio: payload.datosProyecto.fechaInicio,
-      estatus: payload.estatus,
+      faseId: fase.id,
       pasoActual: payload.pasoActual,
     };
 
@@ -244,6 +252,7 @@ export async function obtenerProyectoHidratado(tx: Cliente, proyectoId: string, 
     where: { id: proyectoId },
     include: {
       contacto: true,
+      fase: true,
       consumos: { orderBy: { orden: 'asc' } },
       cotizaciones: {
         where: cotizacionId ? { id: cotizacionId } : undefined,

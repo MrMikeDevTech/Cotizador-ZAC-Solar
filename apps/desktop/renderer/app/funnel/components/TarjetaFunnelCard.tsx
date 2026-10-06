@@ -1,72 +1,88 @@
 'use client';
 
 import Link from 'next/link';
-import { TarjetaFunnel } from '../types';
-import { EstatusBadge } from './EstatusBadge';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ProyectoFunnel } from '../types';
 
 interface TarjetaFunnelCardProps {
-  tarjeta: TarjetaFunnel;
-  estaArrastrando: boolean;
-  onDragStart: (id: string) => void;
+  proyecto: ProyectoFunnel;
+  color: string;
+  faseId: string;
 }
 
-export function TarjetaFunnelCard({
-  tarjeta,
-  estaArrastrando,
-  onDragStart,
-}: TarjetaFunnelCardProps) {
+const formateadorMoneda = new Intl.NumberFormat('es-MX', {
+  style: 'currency',
+  currency: 'MXN',
+  minimumFractionDigits: 2,
+});
+
+function nombreContacto(proyecto: ProyectoFunnel): string {
+  const { contacto } = proyecto;
+  return [contacto.nombre, contacto.apellidoPaterno, contacto.apellidoMaterno]
+    .filter((parte) => parte && parte.trim().length > 0)
+    .join(' ');
+}
+
+/**
+ * Tarjeta de proyecto del tablero de funnel. Es arrastrable (dnd-kit) tanto
+ * dentro de su columna como entre columnas. El enlace "Ver" detiene la
+ * propagación del puntero para que el drag no se active al hacer clic en él.
+ */
+export function TarjetaFunnelCard({ proyecto, color, faseId }: TarjetaFunnelCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: proyecto.id,
+    data: { type: 'tarjeta', faseId },
+  });
+
+  const estilo = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const detenerPropagacion = (evento: ReactPointerEvent<HTMLAnchorElement>) => {
+    evento.stopPropagation();
+  };
+
   return (
     <div
-      draggable
-      onDragStart={() => onDragStart(tarjeta.id)}
-      className={`bg-white rounded-2xl p-5 shadow-lg border border-gray-100 hover:shadow-xl transition-all cursor-grab active:cursor-grabbing space-y-3 ${
-        estaArrastrando
-          ? 'opacity-40 scale-95 border-dashed border-blue-400'
-          : 'opacity-100'
+      ref={setNodeRef}
+      style={estilo}
+      {...attributes}
+      {...listeners}
+      className={`bg-white rounded-2xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing touch-none ${
+        isDragging ? 'opacity-40' : ''
       }`}
     >
-      {/* ESTATUS Y TARIFA */}
-      <div className="flex justify-between items-center">
-        <EstatusBadge estatus={tarjeta.estatus} />
-        <span className="text-[10px] text-gray-400 font-medium">
-          Tarifa: {tarjeta.tarifa}
-        </span>
-      </div>
+      <div className="flex items-start gap-2.5">
+        <span
+          className="w-1.5 self-stretch rounded-full shrink-0"
+          style={{ backgroundColor: color }}
+          aria-hidden="true"
+        />
 
-      {/* CLIENTE Y PROYECTO */}
-      <div>
-        <h3 className="font-bold text-gray-800 text-sm leading-tight">
-          {tarjeta.cliente}
-        </h3>
-        <p className="text-xs text-gray-500 font-medium mt-0.5">
-          {tarjeta.proyecto}
-        </p>
-      </div>
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <span className="text-[10px] font-bold text-gray-400 tracking-wide uppercase">{proyecto.codigo}</span>
 
-      {/* DETALLES */}
-      <div className="text-[11px] text-gray-500 space-y-1 pt-2 border-t border-gray-100">
-        <p>
-          <span className="text-gray-400">Autor:</span> {tarjeta.autor}
-        </p>
-        <p>
-          <span className="text-gray-400">Último Paso:</span> {tarjeta.ultimoPaso}
-        </p>
-        <p className="font-semibold text-gray-800 pt-1">
-          <span className="text-gray-400 font-normal">Costo Estimado:</span> $
-          {tarjeta.costoEstimado.toLocaleString('es-MX', {
-            minimumFractionDigits: 2,
-          })}
-        </p>
-      </div>
+          <h3 className="font-bold text-gray-800 text-sm leading-tight truncate">{proyecto.nombre}</h3>
 
-      {/* ACCIONES */}
-      <div className="pt-2 flex justify-end gap-2 text-xs border-t border-gray-50">
-        <Link
-          href="/proyectos"
-          className="text-[#00388d] font-semibold hover:underline text-[11px]"
-        >
-          Ver detalle →
-        </Link>
+          <p className="text-xs text-gray-500 truncate">{nombreContacto(proyecto)}</p>
+
+          <p className="font-semibold text-gray-800 text-sm pt-1.5 border-t border-gray-100">
+            {proyecto.granTotal != null ? formateadorMoneda.format(proyecto.granTotal) : 'Sin cotizar'}
+          </p>
+
+          <div className="pt-1 flex justify-end">
+            <Link
+              href={`/proyectos/nuevo?id=${proyecto.id}`}
+              onPointerDown={detenerPropagacion}
+              className="text-[#00388d] font-semibold hover:underline text-[11px]"
+            >
+              Ver
+            </Link>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import type { ConsumoPeriodo, DatosContacto, CargoEditable, ConceptoCotizacion, MetodoPrecio, TipoMoneda, EstatusProyecto } from './dominio.ts';
+import type { ConsumoPeriodo, DatosContacto, CargoEditable, ConceptoCotizacion, MetodoPrecio, TipoMoneda } from './dominio.ts';
 
 export interface EquipoSeleccionado {
   panelClave: string;
@@ -42,7 +42,8 @@ export interface GuardarProyectoPayload {
   datosProyecto: DatosProyectoPayload;
   equipo: EquipoSeleccionado;
   otrosCargos: OtrosCargosPayload;
-  estatus: EstatusProyecto;
+  /** Slug de la fase del funnel a la que entra el proyecto. */
+  faseSlug: string;
   pasoActual: number;
 }
 

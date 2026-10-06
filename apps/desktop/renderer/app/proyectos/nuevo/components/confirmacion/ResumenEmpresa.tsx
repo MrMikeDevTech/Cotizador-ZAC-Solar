@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import { Building2, Mail, MapPin, Phone } from 'lucide-react';
+import { Icono } from '../../../../components/Icono';
 import Card from './Card';
 import { DatosEmpresa } from '../../types';
 import { DATOS_EMPRESA_DEFECTO } from '../../constants';
@@ -15,19 +17,19 @@ export default function ResumenEmpresa({ empresa = DATOS_EMPRESA_DEFECTO }: Resu
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm text-gray-700">
         <div className="flex flex-col space-y-2">
           <p className="flex items-center gap-2 font-bold text-gray-800">
-            <span>🏢</span>
+            <Icono icon={Building2} size={16} className="text-[#00388d]" />
             <span>{empresa.nombre}</span>
           </p>
           <p className="flex items-center gap-2">
-            <span>📞</span>
+            <Icono icon={Phone} size={16} className="text-[#00388d]" />
             <span>{empresa.telefono}</span>
           </p>
           <p className="flex items-center gap-2">
-            <span>📍</span>
+            <Icono icon={MapPin} size={16} className="text-[#00388d]" />
             <span>{empresa.localidad}</span>
           </p>
           <p className="flex items-center gap-2">
-            <span>✉️</span>
+            <Icono icon={Mail} size={16} className="text-[#00388d]" />
             <span>{empresa.email}</span>
           </p>
         </div>

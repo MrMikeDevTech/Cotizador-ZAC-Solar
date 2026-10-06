@@ -7,6 +7,7 @@ import { ejecutarMigraciones } from '../db/migrador.ts';
 import { crearClientePrisma } from '../db/cliente.ts';
 import { sembrarCatalogos } from '../db/seed.ts';
 import { crearApp } from '../app.ts';
+import { crearAdminConSesion } from '../test-helpers/auth.ts';
 import type { PrismaClient } from '../generated/prisma/client.ts';
 import type { Hono } from 'hono';
 
@@ -48,7 +49,7 @@ function payloadProyecto(overrides: Record<string, unknown> = {}) {
       ocultarDesglose: false, descuento5: false, descuento10: false, cargosEditables: [],
       conceptos: conceptosFixture,
     },
-    estatus: 'cotizado', pasoActual: 5,
+    faseSlug: 'cotizado', pasoActual: 5,
     ...overrides,
   };
 }
@@ -57,6 +58,12 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
   let dbPath: string;
   let prisma: PrismaClient;
   let app: Hono<any>;
+  let authHeaders: Record<string, string>;
+
+  /** Helper que manda el header de sesión en cada petición, para no repetir el login en cada test. */
+  async function req(path: string, init: RequestInit = {}): Promise<Response> {
+    return app.request(path, { ...init, headers: { ...authHeaders, ...(init.headers as Record<string, string> | undefined) } });
+  }
 
   before(async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cotizador-api-test-'));
@@ -65,6 +72,7 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     prisma = crearClientePrisma(dbPath);
     await sembrarCatalogos(prisma);
     app = crearApp(prisma);
+    ({ headers: authHeaders } = await crearAdminConSesion(prisma));
   });
 
   after(async () => {
@@ -73,13 +81,13 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
   });
 
   test('GET /api/health responde ok', async () => {
-    const res = await app.request('/api/health');
+    const res = await req('/api/health');
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { estado: 'ok' });
   });
 
   test('GET /api/config devuelve los catálogos sembrados', async () => {
-    const res = await app.request('/api/config');
+    const res = await req('/api/config');
     assert.equal(res.status, 200);
     const data: any = await res.json();
     assert.equal(data.paneles.length, 6);
@@ -89,7 +97,7 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
   });
 
   test('POST /api/contactos crea un contacto y GET /api/contactos?q= lo encuentra', async () => {
-    const res = await app.request('/api/contactos', {
+    const res = await req('/api/contactos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -104,13 +112,13 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     assert.ok(contacto.id);
     assert.equal(contacto.codigo.startsWith('JUP-'), true);
 
-    const busqueda = await app.request('/api/contactos?q=Juan');
+    const busqueda = await req('/api/contactos?q=Juan');
     const resultados: any = await busqueda.json();
     assert.equal(resultados.some((c: any) => c.id === contacto.id), true);
   });
 
   test('POST /api/proyectos guarda contacto + proyecto + 6 consumos + cotización en una transacción', async () => {
-    const res = await app.request('/api/proyectos', {
+    const res = await req('/api/proyectos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadProyecto()),
@@ -127,39 +135,39 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
 
   test('GET /api/proyectos/:id rehidrata el proyecto completo', async () => {
     const creado: any = await (
-      await app.request('/api/proyectos', {
+      await req('/api/proyectos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadProyecto({ estatus: 'borrador', pasoActual: 3 })),
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'borrador', pasoActual: 3 })),
       })
     ).json();
 
-    const res = await app.request(`/api/proyectos/${creado.id}`);
+    const res = await req(`/api/proyectos/${creado.id}`);
     assert.equal(res.status, 200);
     const proyecto: any = await res.json();
-    assert.equal(proyecto.estatus, 'borrador');
+    assert.equal(proyecto.fase.slug, 'borrador');
     assert.equal(proyecto.pasoActual, 3);
     assert.equal(proyecto.consumos.length, 6);
   });
 
   test('PUT /api/proyectos/:id actualiza un borrador y crea una nueva versión de cotización', async () => {
     const creado: any = await (
-      await app.request('/api/proyectos', {
+      await req('/api/proyectos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadProyecto({ estatus: 'borrador' })),
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'borrador' })),
       })
     ).json();
 
     const actualizado: any = await (
-      await app.request(`/api/proyectos/${creado.id}`, {
+      await req(`/api/proyectos/${creado.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadProyecto({ estatus: 'cotizado', equipo: { panelClave: 'jinko_615', cantPaneles: 10, inversorClave: 'growatt_mic_3300', cantInversores: 1 } })),
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'cotizado', equipo: { panelClave: 'jinko_615', cantPaneles: 10, inversorClave: 'growatt_mic_3300', cantInversores: 1 } })),
       })
     ).json();
 
-    assert.equal(actualizado.estatus, 'cotizado');
+    assert.equal(actualizado.fase.slug, 'cotizado');
     assert.equal(actualizado.cotizaciones[0].version, 2);
     assert.equal(actualizado.cotizaciones[0].cantPaneles, 10);
     // sigue habiendo exactamente 6 consumos (reemplazados, no acumulados)
@@ -167,7 +175,7 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
   });
 
   test('GET /api/proyectos/:id con id inexistente responde 404 con forma de error consistente', async () => {
-    const res = await app.request('/api/proyectos/no-existe');
+    const res = await req('/api/proyectos/no-existe');
     assert.equal(res.status, 404);
     const body: any = await res.json();
     assert.equal(body.error.codigo, 'NO_ENCONTRADO');
@@ -175,7 +183,7 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
 
   test('POST /api/cotizacion/calcular no persiste nada y da el mismo resultado que guardar', async () => {
     const payload = payloadProyecto();
-    const res = await app.request('/api/cotizacion/calcular', {
+    const res = await req('/api/cotizacion/calcular', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -195,7 +203,7 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
   });
 
   test('POST /api/proyectos con datos inválidos responde 400 con detalle de validación', async () => {
-    const res = await app.request('/api/proyectos', {
+    const res = await req('/api/proyectos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ datosContacto: {} }),

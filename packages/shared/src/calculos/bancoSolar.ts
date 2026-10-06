@@ -1,4 +1,6 @@
 import type { ConsumoPeriodo, FilaRetornoInversion } from '../types/dominio.ts';
+import { calcularImporteCfe } from './importeCfe.ts';
+import type { EscalonTarifa } from './importeCfe.ts';
 
 /** Producción estimada por periodo aplicando variaciones estacionales típicas de México. */
 export function calcularProduccionEstacional(
@@ -15,8 +17,15 @@ export function calcularDetalleRetornoInversion(
   consumos: ConsumoPeriodo[],
   produccionBimestral: number,
   pagoMinimoCfe: number,
-  factoresEstacionales?: number[]
-): { filas: FilaRetornoInversion[]; ahorroAnualTotal: number } {
+  factoresEstacionales?: number[],
+  /**
+   * Escalones de la tarifa real de CFE por periodo, alineados por índice con
+   * `consumos`. Si para un periodo no hay escalones (`null` o arreglo
+   * ausente), ese periodo recurre al respaldo offline (promedio
+   * pago/consumo histórico), tal como se calculaba antes.
+   */
+  escalonesPorPeriodo?: Array<EscalonTarifa[] | null>
+): { filas: FilaRetornoInversion[]; ahorroAnualTotal: number; usoTarifaReal: boolean } {
   const produccionesEstacionales = calcularProduccionEstacional(
     produccionBimestral,
     consumos.length,
@@ -26,6 +35,11 @@ export function calcularDetalleRetornoInversion(
   let bancoSolarAcumulado = 0;
   const filas: FilaRetornoInversion[] = [];
   let ahorroAnualTotal = 0;
+  // Verdadero solo si, para cada periodo donde hizo falta calcular un precio
+  // (el banco solar no cubrió todo el consumo), hubo escalones reales
+  // disponibles. Un solo periodo sin escalones basta para marcar el
+  // resultado completo como aproximado.
+  let usoTarifaReal = escalonesPorPeriodo !== undefined;
 
   for (let i = 0; i < consumos.length; i++) {
     const item = consumos[i]!;
@@ -57,8 +71,14 @@ export function calcularDetalleRetornoInversion(
         bancoSolar = 0;
         nuevoConsumo = kwhRestantes;
 
-        const costoKwhPromedio = consumoHistorico > 0 ? pagoHistorico / consumoHistorico : 2.5;
-        nuevoPagoCFE = Math.max(pagoMinimoCfe, Math.round(kwhRestantes * costoKwhPromedio * 100) / 100);
+        const escalones = escalonesPorPeriodo?.[i];
+        if (escalones) {
+          nuevoPagoCFE = calcularImporteCfe(kwhRestantes, escalones, pagoMinimoCfe);
+        } else {
+          usoTarifaReal = false;
+          const costoKwhPromedio = consumoHistorico > 0 ? pagoHistorico / consumoHistorico : 2.5;
+          nuevoPagoCFE = Math.max(pagoMinimoCfe, Math.round(kwhRestantes * costoKwhPromedio * 100) / 100);
+        }
       }
     }
 
@@ -82,5 +102,5 @@ export function calcularDetalleRetornoInversion(
     });
   }
 
-  return { filas, ahorroAnualTotal };
+  return { filas, ahorroAnualTotal, usoTarifaReal };
 }

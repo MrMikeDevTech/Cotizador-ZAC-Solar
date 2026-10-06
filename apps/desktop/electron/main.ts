@@ -106,6 +106,43 @@ function resolveMigrationsDir(): string {
 let apiBaseUrl = "";
 let servidorApi: ReturnType<typeof serve> | null = null;
 
+/** Horas que debe tener el dato del mes en curso antes de volver a consultar a CFE. */
+const HORAS_FRESCURA_TARIFAS = 24;
+
+/**
+ * Actualiza las tarifas de CFE sin bloquear el arranque de la ventana.
+ *
+ * Nunca lanza: si el equipo está sin internet, si CFE cambió el HTML o si el
+ * certificado intermedio caducó, la app sigue funcionando con lo que ya tenga
+ * en SQLite. Cotizar sin conexión es un requisito, no un extra.
+ */
+async function sincronizarTarifasCfe(prisma: ReturnType<typeof crearClientePrisma>): Promise<void> {
+  try {
+    const ahora = new Date();
+    const { _max } = await prisma.cfeTariffRate.aggregate({
+      _max: { fetchedAt: true },
+      where: { year: ahora.getFullYear(), month: ahora.getMonth() + 1 },
+    });
+
+    const ultima = _max.fetchedAt;
+    if (ultima && ahora.getTime() - ultima.getTime() < HORAS_FRESCURA_TARIFAS * 3_600_000) {
+      return; // Ya está fresco: no se golpea el sitio de CFE en cada arranque.
+    }
+
+    const { syncCfeRates } = await import("@cotizador/backend/src/servicios/cfeRates.ts");
+    const r = await syncCfeRates(prisma);
+    console.log(
+      `Tarifas CFE sincronizadas: ${r.saved} escalones, ${r.dacSaved} cuotas DAC, ` +
+        `${r.missing} sin publicar, ${r.errors} con error`,
+    );
+  } catch (error) {
+    console.warn(
+      "No se pudieron sincronizar las tarifas CFE; se continúa con lo ya guardado:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 async function iniciarBackend(): Promise<string> {
   const dbPath = resolverRutaBaseDatos();
   process.env.DATABASE_URL = `file:${dbPath}`;
@@ -115,6 +152,9 @@ async function iniciarBackend(): Promise<string> {
   await sembrarCatalogos(prisma);
 
   const honoApp = crearApp(prisma);
+
+  // Deliberadamente sin `await`: la ventana no debe esperar a la red.
+  void sincronizarTarifasCfe(prisma);
 
   return new Promise((resolve) => {
     servidorApi = serve(

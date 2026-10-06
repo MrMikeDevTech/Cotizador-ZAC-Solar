@@ -4,6 +4,8 @@ import { ZodError } from 'zod';
 import type { PrismaClient } from './generated/prisma/client.ts';
 import type { VariablesApp } from './tipos.ts';
 import { ErrorApi } from './errores.ts';
+import { middlewareSesion } from './middleware/sesion.ts';
+import { authRoutes } from './routes/auth.ts';
 import { configRoutes } from './routes/config.ts';
 import { contactosRoutes } from './routes/contactos.ts';
 import { proyectosRoutes } from './routes/proyectos.ts';
@@ -11,6 +13,11 @@ import { cotizacionesRoutes } from './routes/cotizaciones.ts';
 import { tareasRoutes } from './routes/tareas.ts';
 import { documentosRoutes } from './routes/documentos.ts';
 import { saludRoutes } from './routes/salud.ts';
+import { cfeRatesRoutes } from './routes/cfeRates.ts';
+import { funnelRoutes } from './routes/funnel.ts';
+import { usuariosRoutes } from './routes/usuarios.ts';
+import { agendaRoutes } from './routes/agenda.ts';
+import { reportesRoutes } from './routes/reportes.ts';
 
 const ORIGENES_PERMITIDOS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'null'];
 
@@ -34,6 +41,8 @@ export function crearApp(prisma: PrismaClient) {
     await next();
   });
 
+  app.use('*', middlewareSesion);
+
   app.onError((err, c) => {
     if (err instanceof ErrorApi) {
       return c.json({ error: { codigo: err.codigo, mensaje: err.message, detalles: err.detalles } }, err.status as any);
@@ -49,12 +58,18 @@ export function crearApp(prisma: PrismaClient) {
   });
 
   app.route('/api/health', saludRoutes);
+  app.route('/api/auth', authRoutes);
   app.route('/api/config', configRoutes);
   app.route('/api/contactos', contactosRoutes);
   app.route('/api/proyectos', proyectosRoutes);
   app.route('/api/cotizacion', cotizacionesRoutes);
   app.route('/api/tareas', tareasRoutes);
   app.route('/api/documentos', documentosRoutes);
+  app.route('/api/cfe-rates', cfeRatesRoutes);
+  app.route('/api/funnel', funnelRoutes);
+  app.route('/api/usuarios', usuariosRoutes);
+  app.route('/api/agenda', agendaRoutes);
+  app.route('/api/reportes', reportesRoutes);
 
   return app;
 }

@@ -1,1 +1,80 @@
 @import "tailwindcss";
+
+/*
+ * Tema unificado del proyecto (sintaxis CSS-first de Tailwind v4).
+ *
+ * Antes convivían tres acentos distintos (#2dd4bf en el wizard, #1ac2c2 en el
+ * CRM e indigo-600 en la paginación de reportes) sobre el azul corporativo
+ * #00388d. Estas variables generan utilidades (`bg-marca`, `text-acento`,
+ * `border-peligro`, etc.) sin romper el código existente, que sigue usando
+ * literales como `bg-[#00388d]` — ambos caminos resuelven al mismo color.
+ */
+@theme {
+  --color-marca: #00388d;
+  --color-acento: #2dd4bf;
+  --color-naranja: #f7931e;
+  --color-exito: #8cc63f;
+  --color-peligro: #ef4444;
+  --color-fondo: #8e94f2;
+
+  --animate-fade-in: fade-in 180ms ease-out;
+  --animate-fade-out: fade-out 150ms ease-in forwards;
+  --animate-scale-in: scale-in 180ms ease-out;
+  --animate-scale-out: scale-out 150ms ease-in forwards;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes scale-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Respeta la preferencia de movimiento reducido del sistema operativo. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

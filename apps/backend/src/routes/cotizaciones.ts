@@ -12,6 +12,7 @@ import {
   calcularROI,
   calcularTIR5Anos,
 } from '@cotizador/shared';
+import { NoEncontradoError } from '../errores.ts';
 import type { VariablesApp } from '../tipos.ts';
 
 export const cotizacionesRoutes = new Hono<{ Variables: VariablesApp }>();
@@ -82,4 +83,61 @@ cotizacionesRoutes.post('/calcular', zValidator('json', calcularSchema), async (
     roiTexto,
     tirPorcentaje,
   });
+});
+
+// ─────────────────────────────────────────────────────────
+// Historial de cotizaciones
+//
+// `obtenerProyectoHidratado` hace `take: 1` y solo expone la última versión.
+// Estas rutas dan acceso al histórico completo, que es lo que necesita la
+// sección de Configuración -> Historial de cotizaciones.
+// ─────────────────────────────────────────────────────────
+
+const paginacionSchema = z.object({
+  pagina: z.coerce.number().int().min(1).default(1),
+  porPagina: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+cotizacionesRoutes.get('/', zValidator('query', paginacionSchema), async (c) => {
+  const prisma = c.get('prisma');
+  const { pagina, porPagina } = c.req.valid('query');
+
+  const [datos, total] = await Promise.all([
+    prisma.cotizacion.findMany({
+      orderBy: { createdAt: 'desc' },
+      skip: (pagina - 1) * porPagina,
+      take: porPagina,
+      include: {
+        proyecto: { select: { id: true, codigo: true, nombre: true, contacto: { select: { nombre: true, apellidoPaterno: true } } } },
+      },
+    }),
+    prisma.cotizacion.count(),
+  ]);
+
+  return c.json({ datos, total, pagina, totalPaginas: Math.max(1, Math.ceil(total / porPagina)) });
+});
+
+cotizacionesRoutes.get('/proyecto/:proyectoId', async (c) => {
+  const prisma = c.get('prisma');
+  const versiones = await prisma.cotizacion.findMany({
+    where: { proyectoId: c.req.param('proyectoId') },
+    orderBy: { version: 'desc' },
+    include: { conceptos: { orderBy: { orden: 'asc' } }, cargos: { orderBy: { orden: 'asc' } } },
+  });
+  if (versiones.length === 0) throw new NoEncontradoError('Cotizaciones del proyecto');
+  return c.json(versiones);
+});
+
+cotizacionesRoutes.get('/:id', async (c) => {
+  const prisma = c.get('prisma');
+  const cotizacion = await prisma.cotizacion.findUnique({
+    where: { id: c.req.param('id') },
+    include: {
+      conceptos: { orderBy: { orden: 'asc' } },
+      cargos: { orderBy: { orden: 'asc' } },
+      proyecto: { include: { contacto: true } },
+    },
+  });
+  if (!cotizacion) throw new NoEncontradoError('Cotización');
+  return c.json(cotizacion);
 });

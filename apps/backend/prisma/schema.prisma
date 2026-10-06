@@ -112,6 +112,14 @@ model Localidad {
   nombre           String
   factorProduccion Float
   horasSol         Float
+  /// Mes en que arranca el verano (2-5 = FEB-MAY), según lo define CFE para la
+  /// localidad. Determina cuál de los dos juegos de cuotas aplica a cada periodo
+  /// del recibo. `null` en localidades sin temporada de verano diferenciada.
+  mesInicioVerano  Int?
+  /// Región tarifaria de DAC a la que pertenece la localidad ('Central',
+  /// 'Noroeste', 'Baja California'…). CFE publica DAC por región, no por tarifa
+  /// escalonada, así que sin esto no se sabe qué precio aplica.
+  regionDac        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -177,7 +185,12 @@ model Proyecto {
   porcentajeDap    String    @default("")
   periodo          String    @default("Bimestral")
   fechaInicio      String    @default("")
-  estatus          String    @default("borrador") // borrador | cotizado | enviado | vendido | perdido
+  /// Fase del funnel. Sustituye al antiguo campo `estatus` (string libre): una
+  /// sola fuente de verdad, para que el tablero y el proyecto no se contradigan.
+  faseId           String
+  fase             FunnelFase @relation(fields: [faseId], references: [id])
+  /// Posición dentro de su columna del funnel, para poder reordenar a mano.
+  ordenEnFase      Int       @default(0)
   pasoActual       Int       @default(1)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -187,6 +200,8 @@ model Proyecto {
   cotizaciones Cotizacion[]
   tareas       Tarea[]
   documentos   Documento[]
+
+  @@index([faseId, ordenEnFase])
 }
 
 model ConsumoPeriodo {
@@ -303,4 +318,124 @@ model Documento {
   nombreArchivo String
   ruta          String
   generadoEn    DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────────────
+// TARIFAS CFE (pobladas por @cotizador/cfe-scraper)
+//
+// Nota: este modelo usa nomenclatura en inglés por decisión explícita, a
+// diferencia del resto del schema. Una fila por escalón de consumo, porque el
+// número de escalones varía: 3 en las tarifas 1/1A/1B y 4 en 1C–1F.
+// ─────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────
+// SESIÓN Y USUARIOS
+// ─────────────────────────────────────────────────────────
+
+model Usuario {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  nombre       String
+  /// scrypt. Nunca se guarda la contraseña en claro ni reversible.
+  passwordHash String
+  salt         String
+  rol          String    @default("usuario") // 'admin' | 'usuario'
+  activo       Boolean   @default(true)
+  ultimoAcceso DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  sesiones Sesion[]
+
+  @@index([rol, activo])
+}
+
+model Sesion {
+  id        String   @id @default(uuid())
+  /// Solo el hash del token. Si alguien lee la base de datos no obtiene
+  /// credenciales utilizables.
+  tokenHash String   @unique
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  expiraEn  DateTime
+  createdAt DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([expiraEn])
+}
+
+// ─────────────────────────────────────────────────────────
+// FUNNEL Y AGENDA
+// ─────────────────────────────────────────────────────────
+
+model FunnelFase {
+  id        String     @id @default(uuid())
+  nombre    String
+  slug      String     @unique
+  orden     Int
+  color     String     @default("#00388d")
+  /// Las fases sembradas no se pueden borrar: son las que usa el wizard.
+  esSistema Boolean    @default(false)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  proyectos Proyecto[]
+}
+
+model EventoAgenda {
+  id          String    @id @default(uuid())
+  titulo      String
+  descripcion String    @default("")
+  inicio      DateTime
+  fin         DateTime?
+  todoElDia   Boolean   @default(false)
+  tipo        String    @default("evento") // 'evento' | 'visita' | 'instalacion'
+  proyectoId  String?
+  contactoId  String?
+  usuarioId   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([inicio])
+}
+
+/// Tarifa DAC. Tiene una forma distinta al resto: CFE no la publica por
+/// escalones de consumo sino por **región**, como un cargo fijo mensual más un
+/// precio plano por kWh. Meterla en `CfeTariffRate` habría obligado a fingir
+/// escalones que no existen.
+model CfeDacRate {
+  id             String   @id @default(uuid())
+  year           Int
+  month          Int
+  region         String
+  /// Cargo fijo mensual, en pesos.
+  cargoFijo      Float
+  /// Precio por kWh. En las regiones sin temporada diferenciada es el único.
+  precioKwh      Float
+  /// Precio de verano, solo donde CFE lo distingue (Baja California y BCS).
+  precioKwhVerano Float?
+  fetchedAt      DateTime @default(now())
+
+  @@unique([year, month, region])
+  @@index([year, month])
+}
+
+model CfeTariffRate {
+  id          String   @id @default(uuid())
+  tariffCode  String // '1', '1A'… coincide con Tarifa.codigo
+  year        Int
+  month       Int // 1-12
+  season      String // 'summer' | 'non_summer'
+  tierIndex   Int // 0 = escalón básico
+  concept     String // 'Consumo básico', 'Consumo intermedio bajo'…
+  price       Float // pesos por kWh
+  description String // texto original de CFE, íntegro
+  limitKwh    Int? // null en el escalón excedente o si no se pudo extraer
+  fetchedAt   DateTime @default(now())
+
+  @@unique([tariffCode, year, month, season, tierIndex])
+  @@index([tariffCode, year, month])
 }

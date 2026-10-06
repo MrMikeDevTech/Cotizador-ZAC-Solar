@@ -14,13 +14,13 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "bun run --filter @cotizador/backend db:generate",
+    "postinstall": "bun run --filter @cotizador/backend db:generate || echo '\\n⚠  prisma generate falló: el backend no arrancará hasta generarlo.\\n   En NixOS el CLI no encuentra su engine; ver README (PRISMA_SCHEMA_ENGINE_BINARY).\\n'",
     "dev:renderer": "bun run --filter @cotizador/renderer dev",
     "dev:backend": "bun run --filter @cotizador/backend dev",
     "build:renderer": "bun run --filter @cotizador/renderer build",
     "start": "bun run --filter @cotizador/desktop start",
     "dist": "bun run --filter @cotizador/desktop dist",
-    "test": "bun test --path-ignore-patterns 'apps/backend/**' && bun run --filter @cotizador/backend test"
+    "test": "bun test --path-ignore-patterns 'apps/backend/**' --path-ignore-patterns 'packages/cfe-scraper/**' && bun run --filter @cotizador/backend test && bun run --filter @cotizador/cfe-scraper test"
   },
   "trustedDependencies": [
     "@prisma/engines",

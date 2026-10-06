@@ -37,6 +37,8 @@ export type { Promedios, EntradaDimensionamiento, ResultadoDimensionamiento } fr
 export { calcularTotalesCotizacion, convertirMoneda } from './calculos/cotizacion.ts';
 export type { EntradaTotalesCotizacion, ResultadoTotalesCotizacion } from './calculos/cotizacion.ts';
 export { calcularProduccionEstacional, calcularDetalleRetornoInversion } from './calculos/bancoSolar.ts';
+export { calcularImporteCfe } from './calculos/importeCfe.ts';
+export type { EscalonTarifa } from './calculos/importeCfe.ts';
 export { calcularBeneficiosAmbientales } from './calculos/ambiental.ts';
 export type { BeneficiosAmbientales } from './calculos/ambiental.ts';
 export { calcularProyeccion5Anos, calcularROI, calcularTIR5Anos } from './calculos/financiero.ts';

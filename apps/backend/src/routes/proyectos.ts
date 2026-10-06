@@ -10,11 +10,11 @@ export const proyectosRoutes = new Hono<{ Variables: VariablesApp }>();
 
 proyectosRoutes.get('/', async (c) => {
   const prisma = c.get('prisma');
-  const estatus = c.req.query('estatus');
+  const faseSlug = c.req.query('fase');
 
   const proyectos = await prisma.proyecto.findMany({
-    where: { deletedAt: null, ...(estatus ? { estatus } : {}) },
-    include: { contacto: true },
+    where: { deletedAt: null, ...(faseSlug ? { fase: { slug: faseSlug } } : {}) },
+    include: { contacto: true, fase: true },
     orderBy: { updatedAt: 'desc' },
   });
 
@@ -41,18 +41,25 @@ proyectosRoutes.put('/:id', zValidator('json', guardarProyectoSchema), async (c)
   return c.json(proyecto);
 });
 
-const patchEstatusSchema = z.object({
-  estatus: z.enum(['borrador', 'cotizado', 'enviado', 'vendido', 'perdido']),
+const patchFaseSchema = z.object({
+  faseSlug: z.string().min(1),
+  /** Posición dentro de la columna destino. Omitirla la manda al final. */
+  ordenEnFase: z.number().int().min(0).optional(),
 });
 
-proyectosRoutes.patch('/:id/estatus', zValidator('json', patchEstatusSchema), async (c) => {
+proyectosRoutes.patch('/:id/fase', zValidator('json', patchFaseSchema), async (c) => {
   const prisma = c.get('prisma');
   const existente = await prisma.proyecto.findUnique({ where: { id: c.req.param('id') } });
   if (!existente || existente.deletedAt) throw new NoEncontradoError('Proyecto');
 
+  const { faseSlug, ordenEnFase } = c.req.valid('json');
+  const fase = await prisma.funnelFase.findUnique({ where: { slug: faseSlug } });
+  if (!fase || fase.deletedAt) throw new NoEncontradoError(`Fase ${faseSlug}`);
+
   const proyecto = await prisma.proyecto.update({
     where: { id: c.req.param('id') },
-    data: { estatus: c.req.valid('json').estatus },
+    data: { faseId: fase.id, ...(ordenEnFase !== undefined ? { ordenEnFase } : {}) },
+    include: { fase: true },
   });
   return c.json(proyecto);
 });

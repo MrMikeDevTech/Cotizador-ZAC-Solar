@@ -1,217 +1,123 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { useSesion } from '../lib/SesionContext';
+import { TarjetaResumen } from './dashboard/TarjetaResumen';
+import { TarjetaProyectosPorFase } from './dashboard/TarjetaProyectosPorFase';
+import { TarjetaActividad } from './dashboard/TarjetaActividad';
+import { TarjetaTareas } from './dashboard/TarjetaTareas';
+import { TarjetaContactos } from './dashboard/TarjetaContactos';
+import { TarjetaEventos } from './dashboard/TarjetaEventos';
+import { TarjetaCfeStatus } from './dashboard/TarjetaCfeStatus';
+import type {
+  ActividadReporte,
+  ContactoReciente,
+  EstadoCfeRates,
+  EstadoRecurso,
+  FaseResumen,
+  ItemActividad,
+  ItemAgenda,
+  ResumenReporte,
+  TareaPendiente,
+} from './dashboard/tipos';
 
-interface Tarea {
-  id: string;
-  titulo: string;
-  descripcion: string;
-  fechaVencimiento: string | null;
-  completada: boolean;
+/** Ventana de la agenda para el widget de "próximos eventos". */
+const DIAS_AGENDA = 30;
+/** Página de actividad que se trae para alimentar la gráfica de los últimos días. */
+const PAGINA_ACTIVIDAD = { pagina: 1, porPagina: 100 };
+
+function mensajeError(razon: unknown): string {
+  if (razon instanceof ApiError) return razon.message;
+  return 'No se pudo cargar la información.';
 }
 
-const datosProyectos = {
-  'Desarrollo': [],
-  'Enviados': [],
-  'Vendidos': [],
-  'Perdidos': [],
-};
-
 export default function Home() {
-  const [tabTareaActiva, setTabTareaActiva] = useState<'En curso' | 'Vencidas'>('En curso');
-  const [tabProyectoActivo, setTabProyectoActivo] = useState<'Desarrollo' | 'Enviados' | 'Vendidos' | 'Perdidos'>('Desarrollo');
-  const [tareas, setTareas] = useState<Tarea[]>([]);
+  const { usuario } = useSesion();
+
+  const [resumen, setResumen] = useState<EstadoRecurso<ResumenReporte>>({ estado: 'cargando' });
+  const [actividad, setActividad] = useState<EstadoRecurso<ItemActividad[]>>({ estado: 'cargando' });
+  const [tareas, setTareas] = useState<EstadoRecurso<TareaPendiente[]>>({ estado: 'cargando' });
+  const [contactos, setContactos] = useState<EstadoRecurso<ContactoReciente[]>>({ estado: 'cargando' });
+  const [eventos, setEventos] = useState<EstadoRecurso<ItemAgenda[]>>({ estado: 'cargando' });
+  const [cfeStatus, setCfeStatus] = useState<EstadoRecurso<EstadoCfeRates>>({ estado: 'cargando' });
 
   useEffect(() => {
-    api
-      .get<Tarea[]>('/api/tareas?completada=false')
-      .then(setTareas)
-      .catch(() => setTareas([]));
+    const ahora = new Date();
+    const hasta = new Date(ahora);
+    hasta.setDate(hasta.getDate() + DIAS_AGENDA);
+
+    // Las seis peticiones salen en paralelo: una tarjeta que falle no debe
+    // tumbar el resto del tablero, por eso se resuelven con allSettled y
+    // cada tarjeta recibe únicamente su propio resultado.
+    Promise.allSettled([
+      api.get<ResumenReporte>('/api/reportes/resumen'),
+      api.get<ActividadReporte>(
+        `/api/reportes/actividad?pagina=${PAGINA_ACTIVIDAD.pagina}&porPagina=${PAGINA_ACTIVIDAD.porPagina}`
+      ),
+      api.get<TareaPendiente[]>('/api/tareas?completada=false'),
+      api.get<ContactoReciente[]>('/api/contactos'),
+      api.get<ItemAgenda[]>(`/api/agenda?desde=${ahora.toISOString()}&hasta=${hasta.toISOString()}`),
+      api.get<EstadoCfeRates>('/api/cfe-rates/status'),
+    ]).then(([rResumen, rActividad, rTareas, rContactos, rEventos, rCfe]) => {
+      setResumen(
+        rResumen.status === 'fulfilled'
+          ? { estado: 'listo', datos: rResumen.value }
+          : { estado: 'error', mensaje: mensajeError(rResumen.reason) }
+      );
+      setActividad(
+        rActividad.status === 'fulfilled'
+          ? { estado: 'listo', datos: rActividad.value.datos }
+          : { estado: 'error', mensaje: mensajeError(rActividad.reason) }
+      );
+      setTareas(
+        rTareas.status === 'fulfilled'
+          ? { estado: 'listo', datos: rTareas.value }
+          : { estado: 'error', mensaje: mensajeError(rTareas.reason) }
+      );
+      setContactos(
+        rContactos.status === 'fulfilled'
+          ? { estado: 'listo', datos: rContactos.value }
+          : { estado: 'error', mensaje: mensajeError(rContactos.reason) }
+      );
+      setEventos(
+        rEventos.status === 'fulfilled'
+          ? { estado: 'listo', datos: rEventos.value }
+          : { estado: 'error', mensaje: mensajeError(rEventos.reason) }
+      );
+      setCfeStatus(
+        rCfe.status === 'fulfilled'
+          ? { estado: 'listo', datos: rCfe.value }
+          : { estado: 'error', mensaje: mensajeError(rCfe.reason) }
+      );
+    });
   }, []);
 
-  const ahora = Date.now();
-  const datosTareas = {
-    'En curso': tareas.filter((t) => !t.fechaVencimiento || new Date(t.fechaVencimiento).getTime() >= ahora),
-    'Vencidas': tareas.filter((t) => t.fechaVencimiento && new Date(t.fechaVencimiento).getTime() < ahora),
-  };
+  // La gráfica de proyectos por fase solo necesita ese recorte del resumen;
+  // se deriva aquí para no pedirle datos duplicados al backend.
+  const proyectosPorFase: EstadoRecurso<FaseResumen[]> =
+    resumen.estado === 'listo'
+      ? { estado: 'listo', datos: resumen.datos.proyectosPorFase }
+      : resumen.estado === 'error'
+        ? { estado: 'error', mensaje: resumen.mensaje }
+        : { estado: 'cargando' };
 
   return (
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800">
-      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 lg:auto-rows-[13rem]">
+        <TarjetaResumen
+          estado={resumen}
+          nombreUsuario={usuario?.nombre ?? 'equipo'}
+          className="md:col-span-2 lg:col-span-4"
+        />
 
-      {/* --- SECCIÓN SUPERIOR --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-8">
-        
-        <div className="lg:col-span-4 flex flex-col gap-6">
-          <div className="text-center flex flex-col items-center mt-4">
-            <div className="w-36 h-36 bg-white rounded-full flex items-center justify-center overflow-hidden shadow-md p-2">
-              <img 
-                src="/logo.jpeg" 
-                alt="Logo Zac-Solar" 
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <h2 className="text-3xl font-bold text-white mt-4 tracking-wide drop-shadow-md leading-tight">
-              El sol es<br/>nuestro aliado
-            </h2>
-          </div>
+        <TarjetaProyectosPorFase estado={proyectosPorFase} className="md:col-span-2 lg:col-span-2 lg:row-span-2" />
+        <TarjetaActividad estado={actividad} className="md:col-span-2 lg:col-span-2 lg:row-span-2" />
 
-          {/* --- PANEL DE TAREAS --- */}
-          <div className="bg-white rounded-3xl shadow-lg p-6 h-full flex flex-col">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-semibold">Tareas</h3>
-              <button className="border-2 border-[#00388d] text-[#00388d] px-4 py-1 rounded-full text-xs font-semibold hover:bg-blue-50 transition-colors">
-                Nueva Tarea
-              </button>
-            </div>
-            
-            <div className="flex gap-4 border-b border-gray-200 text-sm mb-4 shrink-0">
-              <button 
-                onClick={() => setTabTareaActiva('En curso')}
-                className={`pb-2 font-medium ${tabTareaActiva === 'En curso' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                En curso ({datosTareas['En curso'].length})
-              </button>
-              <button 
-                onClick={() => setTabTareaActiva('Vencidas')}
-                className={`pb-2 font-medium ${tabTareaActiva === 'Vencidas' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-              >
-                Vencidas({datosTareas['Vencidas'].length})
-              </button>
-            </div>
-            
-            <div className="space-y-4 mt-2 h-[220px] overflow-y-auto pr-2">
-              {datosTareas[tabTareaActiva].length > 0 ? (
-                datosTareas[tabTareaActiva].map((tarea) => (
-                  <div key={tarea.id} className="flex justify-between items-center text-sm border-b border-gray-100 pb-3">
-                    <div>
-                      <p className="font-semibold">{tarea.titulo}</p>
-                      <p className="text-gray-500 text-xs mt-1">
-                        {tarea.fechaVencimiento ? new Date(tarea.fechaVencimiento).toLocaleDateString('es-MX') : 'Sin fecha'}
-                      </p>
-                    </div>
-                    <Link href="#" className="text-blue-600 font-semibold hover:underline">Ver</Link>
-                  </div>
-                ))
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-xs text-gray-400 italic">No hay tareas en esta sección.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Columna Derecha */}
-        <div className="lg:col-span-8 flex flex-col gap-6 relative z-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            <div className="bg-[#fcf8e1] rounded-3xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-[#00388d] mb-8">Actividad</h3>
-              <div className="relative h-32 border-l border-b border-gray-400 ml-4 mb-6 mt-2">
-                <span className="absolute -left-4 top-0 text-xs text-[#00388d]">1</span>
-                <span className="absolute -left-4 bottom-0 text-xs text-[#00388d]">0</span>
-                <span className="absolute -bottom-6 left-2 text-[10px] text-gray-600 whitespace-nowrap">Semana Pasada</span>
-                <span className="absolute -bottom-6 left-24 text-[10px] text-gray-600 whitespace-nowrap">Semana Actual</span>
-              </div>
-              <div className="flex gap-4 mt-12 text-xs justify-end">
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-[#8cc63f] block"></span> Registrados</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-3 bg-[#f7931e] block"></span> Enviados</span>
-              </div>
-            </div>
-
-            <div className="bg-[#fcf8e1] rounded-3xl shadow-lg p-6 flex flex-col">
-              <h3 className="text-lg font-semibold text-[#00388d] mb-4">Contactos</h3>
-              <div className="grid grid-cols-2 gap-x-2 gap-y-2 text-[10px] mb-6">
-                <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-2 bg-[#8cc63f] block"></span> Primer contacto</span>
-                <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-2 bg-[#4a86e8] block"></span> Contactar en el futuro</span>
-                <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-2 bg-[#bf9000] block"></span> No contesta</span>
-                <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-2 bg-[#999999] block"></span> Solicitud de recibos</span>
-                <span className="flex items-center gap-1 col-span-2 text-gray-600"><span className="w-3 h-2 bg-[#b45f06] block"></span> Contrató con otra empresa</span>
-              </div>
-              <div className="flex-grow flex justify-center items-center mt-2">
-                <div className="w-24 h-24 rounded-full border-[3px] border-gray-200"></div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl shadow-lg p-6 flex-1 flex items-start min-h-[12rem]">
-            <h3 className="text-lg font-semibold">Tu configuracion</h3>
-          </div>
-        </div>
-      </div>
-
-      {/* --- SECCIÓN INFERIOR --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-        
-        {/* --- PANEL DE PROYECTOS --- */}
-        <div className="bg-white rounded-3xl shadow-lg p-6 flex flex-col">
-          <div className="flex flex-wrap gap-2 justify-between items-center mb-6 shrink-0">
-            <h3 className="text-lg font-semibold">Proyectos</h3>
-            <div className="flex gap-2">
-              <button className="border border-[#f7931e] text-[#f7931e] px-3 py-1 rounded-full text-[10px] md:text-xs font-semibold hover:bg-orange-50 transition-colors">Cotizacion rapida</button>
-              
-              {/* AQUÍ ESTÁ EL CAMBIO PRINCIPAL */}
-              <Link href="/proyectos/nuevo" className="border border-[#f7931e] text-[#f7931e] px-3 py-1 rounded-full text-[10px] md:text-xs font-semibold hover:bg-orange-50 transition-colors">
-                Nuevo Proyecto
-              </Link>
-            </div>
-          </div>
-          
-          <div className="flex gap-4 border-b border-gray-200 text-xs mb-4 pb-1 shrink-0">
-            {(['Desarrollo', 'Enviados', 'Vendidos', 'Perdidos'] as const).map((tab) => (
-              <button 
-                key={tab}
-                onClick={() => setTabProyectoActivo(tab)}
-                className={`pb-1 font-semibold ${tabProyectoActivo === tab ? 'text-gray-800 border-b-2 border-[#f7931e]' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-          
-          <div className="space-y-4 mt-2 h-[220px] overflow-y-auto pr-2">
-            {datosProyectos[tabProyectoActivo].length > 0 ? (
-              datosProyectos[tabProyectoActivo].map((proyecto: any) => (
-                <div key={proyecto.id} className="flex justify-between text-xs border-b border-gray-100 pb-3">
-                  <div className="w-2/5">
-                    <p className="font-semibold text-gray-800 text-sm">{proyecto.nombre}</p>
-                    <p className="text-gray-400 mt-1">Ultimo paso registrado: {proyecto.paso}</p>
-                  </div>
-                  <div className="w-2/5">
-                    <p className="font-bold text-gray-800">{proyecto.codigo}</p>
-                    <p className="text-gray-700">{proyecto.lugar}</p>
-                    <p className="text-gray-400 mt-1">{proyecto.fecha}</p>
-                  </div>
-                  <Link href="#" className="text-[#f7931e] font-semibold flex items-center hover:underline">Ver</Link>
-                </div>
-              ))
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <p className="text-xs text-gray-400 italic">No hay proyectos en {tabProyectoActivo}.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* --- PANEL DE CONTACTOS --- */}
-        <div className="bg-white rounded-3xl shadow-lg p-6 flex flex-col">
-          <div className="flex justify-between items-center mb-6 shrink-0">
-            <h3 className="text-lg font-semibold">Contactos <span className="text-gray-400 text-sm font-normal ml-1">(0)</span></h3>
-            <button className="border border-[#8cc63f] text-[#8cc63f] px-4 py-1 rounded-full text-xs font-semibold hover:bg-green-50 transition-colors">
-              Nuevo Contacto
-            </button>
-          </div>
-          
-          <div className="space-y-4 h-[260px] overflow-y-auto pr-2">
-            <div className="h-full flex items-center justify-center">
-              <p className="text-xs text-gray-400 italic">No hay contactos registrados.</p>
-            </div>
-          </div>
-        </div>
-
+        <TarjetaTareas estado={tareas} className="md:col-span-2 lg:col-span-2 lg:row-span-2" />
+        <TarjetaContactos estado={contactos} className="md:col-span-1 lg:col-span-1" />
+        <TarjetaEventos estado={eventos} className="md:col-span-1 lg:col-span-1" />
+        <TarjetaCfeStatus estado={cfeStatus} className="md:col-span-2 lg:col-span-2" />
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { calcularProduccionEstacional, calcularDetalleRetornoInversion } from './bancoSolar.ts';
+import { calcularImporteCfe } from './importeCfe.ts';
+import type { EscalonTarifa } from './importeCfe.ts';
 import type { ConsumoPeriodo } from '../types/dominio.ts';
 
 describe('calcularProduccionEstacional', () => {
@@ -42,5 +44,95 @@ describe('calcularDetalleRetornoInversion', () => {
   test('produccion 0 no genera ahorro', () => {
     const { filas } = calcularDetalleRetornoInversion(consumosFixture, 0, 60);
     filas.forEach((fila) => expect(fila.ahorroPeriodo).toBe(0));
+  });
+
+  test('sin escalonesPorPeriodo, usoTarifaReal es false y el resultado no cambia (respaldo offline)', () => {
+    const sinEscalones = calcularDetalleRetornoInversion(consumosFixture, 998.72, 60);
+    expect(sinEscalones.usoTarifaReal).toBe(false);
+
+    const conUndefinedExplicito = calcularDetalleRetornoInversion(consumosFixture, 998.72, 60, undefined, undefined);
+    expect(conUndefinedExplicito.filas).toEqual(sinEscalones.filas);
+    expect(conUndefinedExplicito.ahorroAnualTotal).toBe(sinEscalones.ahorroAnualTotal);
+  });
+
+  describe('con escalonesPorPeriodo (tarifa real de CFE)', () => {
+    // Tarifa 1A de verano de ejemplo: básico 100@1.019, intermedio 50@1.183, excedente@4.054.
+    const ESCALONES_1A: EscalonTarifa[] = [
+      { tierIndex: 0, concept: 'Consumo básico', price: 1.019, limitKwh: 100 },
+      { tierIndex: 1, concept: 'Consumo intermedio', price: 1.183, limitKwh: 50 },
+      { tierIndex: 2, concept: 'Consumo excedente', price: 4.054, limitKwh: null },
+    ];
+
+    // Producción deliberadamente baja (vs. los 998.72 de arriba): con una
+    // producción grande el banco solar cubre todo el déficit de estos
+    // periodos y nunca se llega a calcular un precio por kWh, dejando estos
+    // tests sin cobertura real. Con 200 kWh bimestrales, cada periodo cae en
+    // déficit y sí ejercita la rama de precio (calcularImporteCfe o su
+    // respaldo lineal).
+    const PRODUCCION_BAJA = 200;
+
+    test('usa calcularImporteCfe (no el promedio lineal) cuando hay escalones para el periodo', () => {
+      const pagoMinimoCfe = 60;
+      const escalonesPorPeriodo = consumosFixture.map(() => ESCALONES_1A);
+
+      const { filas, usoTarifaReal } = calcularDetalleRetornoInversion(
+        consumosFixture,
+        PRODUCCION_BAJA,
+        pagoMinimoCfe,
+        undefined,
+        escalonesPorPeriodo
+      );
+
+      expect(usoTarifaReal).toBe(true);
+
+      filas.forEach((fila, i) => {
+        // Solo las filas en déficit (nuevoConsumo > 0, sin banco solar) pasan
+        // por calcularImporteCfe; las cubiertas por banco solar siguen en
+        // pagoMinimoCfe sin importar los escalones.
+        if (fila.bancoSolar === 0 && fila.nuevoConsumo > 0) {
+          const esperado = calcularImporteCfe(fila.nuevoConsumo, ESCALONES_1A, pagoMinimoCfe);
+          expect(fila.nuevoPagoCFE).toBe(esperado);
+        }
+      });
+    });
+
+    test('un periodo con escalones null cae al respaldo offline para ese periodo y marca usoTarifaReal=false', () => {
+      const pagoMinimoCfe = 60;
+      const escalonesPorPeriodo: Array<EscalonTarifa[] | null> = consumosFixture.map((_, i) =>
+        i === 0 ? null : ESCALONES_1A
+      );
+
+      const { usoTarifaReal } = calcularDetalleRetornoInversion(
+        consumosFixture,
+        PRODUCCION_BAJA,
+        pagoMinimoCfe,
+        undefined,
+        escalonesPorPeriodo
+      );
+
+      // Un solo periodo sin escalones basta para que el resultado completo
+      // se marque como aproximado.
+      expect(usoTarifaReal).toBe(false);
+    });
+
+    test('el camino con escalones difiere del respaldo lineal (demuestra el porqué de calcularImporteCfe)', () => {
+      const pagoMinimoCfe = 60;
+      const escalonesPorPeriodo = consumosFixture.map(() => ESCALONES_1A);
+
+      const conEscalones = calcularDetalleRetornoInversion(
+        consumosFixture,
+        PRODUCCION_BAJA,
+        pagoMinimoCfe,
+        undefined,
+        escalonesPorPeriodo
+      );
+      const sinEscalones = calcularDetalleRetornoInversion(consumosFixture, PRODUCCION_BAJA, pagoMinimoCfe);
+
+      // Al menos una fila en déficit debe diferir entre ambos métodos.
+      const algunaDifiere = conEscalones.filas.some(
+        (fila, i) => fila.nuevoPagoCFE !== sinEscalones.filas[i]!.nuevoPagoCFE
+      );
+      expect(algunaDifiere).toBe(true);
+    });
   });
 });
