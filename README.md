@@ -15,6 +15,7 @@ apps/
   backend/            # API REST local (Hono + Prisma/SQLite)
 packages/
   shared/             # tipos, schemas Zod, cálculos y catálogos por defecto compartidos
+  cfe-scraper/        # obtiene las tarifas domésticas de CFE (app.cfe.mx)
 tsconfig.base.json
 ```
 
@@ -37,6 +38,22 @@ tsconfig.base.json
   O manualmente desde el
   [instalador de Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022),
   marcando el workload "Desktop development with C++".
+
+- **NixOS**: el CLI de Prisma no encuentra su `schema-engine` (intenta descargar un
+  binario para el target `linux-nixos`, que no existe), así que `prisma generate` y
+  `prisma migrate` fallan y el `postinstall` avisa sin romper la instalación. La
+  solución es usar el binario estático, que no depende de FHS:
+
+  ```bash
+  curl -sL "https://binaries.prisma.sh/all_commits/$(bunx prisma --version \
+    | grep -oP 'engine=\K[0-9a-f]+')/linux-static-x64/schema-engine.gz" \
+    | gunzip > /tmp/prisma-schema-engine && chmod +x /tmp/prisma-schema-engine
+  export PRISMA_SCHEMA_ENGINE_BINARY=/tmp/prisma-schema-engine
+  bun run --filter @cotizador/backend db:generate
+  ```
+
+  Solo afecta al desarrollo: en tiempo de ejecución el backend usa el driver adapter
+  de `better-sqlite3` y no necesita ningún engine de Prisma.
 
 ## Primer arranque
 
@@ -88,3 +105,15 @@ bun run dist               # empaqueta instalador (electron-builder)
 - El resto del backend (rutas, cálculos, Prisma Client generado) se compila con
   `bun build` en un único `electron/dist/main.js` — no requiere Node/TS en el
   equipo del cliente final.
+- Los tres externos del bundle (`better-sqlite3`, `@prisma/client` y
+  `@prisma/adapter-better-sqlite3`) están declarados como dependencias de
+  `apps/desktop/package.json`. Con eso basta: electron-builder resuelve el árbol
+  de producción y los copia, incluso estando izados en el `node_modules` de la
+  raíz del monorepo por Bun. **No** hay que añadirlos a `files` en
+  `electron-builder.yml` con patrones `node_modules/...`: esas rutas no existen
+  dentro de `apps/desktop` y el patrón no apuntaría a nada.
+- El certificado intermedio de la cadena TLS de CFE va embebido como constante
+  en `packages/cfe-scraper/src/certificado.ts`, no como archivo. Tras `bun build`
+  el bundle no tiene junto a sí ninguna carpeta `certs/`, así que leerlo del
+  disco fallaba con ENOENT en la app instalada. Caduca en diciembre de 2027; las
+  instrucciones para rotarlo están en el comentario de ese archivo.

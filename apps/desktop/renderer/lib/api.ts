@@ -41,10 +41,58 @@ export class ApiError extends Error {
   }
 }
 
+/** Clave de localStorage donde se guarda el token de sesión. */
+const CLAVE_TOKEN = 'zac-solar.token';
+
+export function leerToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(CLAVE_TOKEN);
+  } catch {
+    return null;
+  }
+}
+
+export function guardarToken(token: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(CLAVE_TOKEN, token);
+  } catch {
+    // almacenamiento no disponible (p. ej. modo privado); la sesión no persiste
+  }
+}
+
+export function borrarToken(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(CLAVE_TOKEN);
+  } catch {
+    // nada que limpiar si no hay almacenamiento
+  }
+}
+
+/**
+ * Callback que el `lib/api.ts` invoca cuando el backend responde 401. Vive
+ * como una simple referencia de función en vez de un import de React: así
+ * este módulo no depende de ningún framework de UI y puede usarse desde
+ * cualquier contexto. Quien monte la sesión (`SesionContext`) se registra
+ * aquí para reaccionar (limpiar estado y dejar que el guard redirija).
+ */
+let manejadorNoAutorizado: (() => void) | null = null;
+
+export function onNoAutorizado(cb: () => void): void {
+  manejadorNoAutorizado = cb;
+}
+
 async function peticion<T>(ruta: string, opciones?: RequestInit): Promise<T> {
+  const token = leerToken();
   const respuesta = await fetch(`${resolverBaseUrl()}${ruta}`, {
     ...opciones,
-    headers: { 'Content-Type': 'application/json', ...opciones?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opciones?.headers,
+    },
   });
 
   if (!respuesta.ok) {
@@ -54,6 +102,12 @@ async function peticion<T>(ruta: string, opciones?: RequestInit): Promise<T> {
     } catch {
       // sin cuerpo JSON
     }
+
+    if (respuesta.status === 401) {
+      borrarToken();
+      manejadorNoAutorizado?.();
+    }
+
     throw new ApiError(
       cuerpo?.error?.codigo ?? 'ERROR_DESCONOCIDO',
       cuerpo?.error?.mensaje ?? `Error ${respuesta.status}`,

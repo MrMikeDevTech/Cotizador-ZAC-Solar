@@ -3,22 +3,30 @@
 import React, { useMemo } from 'react';
 import Card from './Card';
 import { ConsumoPeriodo } from '../../types';
+import { PAGO_MINIMO_CFE } from '../../constants';
 import { calcularDetalleRetornoInversion, formatearMoneda } from './calculosConfirmacion';
+import type { EscalonTarifa } from '@cotizador/shared';
 
 interface TablaRetornoInversionProps {
   consumos: ConsumoPeriodo[];
   produccion?: number;
-  nuevoPago?: number;
+  /** Pago mínimo de CFE (antes se recibía como `nuevoPago`, un valor que la función ni usaba). */
+  pagoMinimoCfe?: number;
+  factoresEstacionales?: number[];
+  /** Escalones reales de CFE por periodo, alineados por índice con `consumos`. `null`/ausente = respaldo offline. */
+  escalonesPorPeriodo?: Array<EscalonTarifa[] | null>;
 }
 
 export default function TablaRetornoInversion({
   consumos,
   produccion = 0,
-  nuevoPago = 0,
+  pagoMinimoCfe = PAGO_MINIMO_CFE,
+  factoresEstacionales,
+  escalonesPorPeriodo,
 }: TablaRetornoInversionProps) {
   const { filas, ahorroAnualTotal } = useMemo(() => {
-    return calcularDetalleRetornoInversion(consumos, produccion, nuevoPago);
-  }, [consumos, produccion, nuevoPago]);
+    return calcularDetalleRetornoInversion(consumos, produccion, pagoMinimoCfe, factoresEstacionales, escalonesPorPeriodo);
+  }, [consumos, produccion, pagoMinimoCfe, factoresEstacionales, escalonesPorPeriodo]);
 
   return (
     <Card title="Detalle del retorno de inversión">

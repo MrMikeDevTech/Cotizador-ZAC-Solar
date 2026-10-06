@@ -1,36 +1,65 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { useUser } from '../context/usercontext';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { useSesion } from '../../lib/SesionContext';
+import { api, ApiError } from '../../lib/api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Contacto, ColumnaOrden, DireccionOrden, ContactoFormData } from './types';
-import { REGISTROS_POR_PAGINA, contactosIniciales, FORM_INICIAL } from './constants';
-import {
-  ContactosFiltros,
-  ContactosTabla,
-  ContactosPaginacion,
-  ModalContacto,
-} from './components';
+import { REGISTROS_POR_PAGINA, FORM_INICIAL } from './constants';
+import { nombreCompleto, ubicacionContacto } from './utils';
+import { ContactosFiltros, ContactosTabla, ModalContacto } from './components';
+import { Pagination } from '../components/Pagination';
 
 export default function ContactosPage() {
-  const { usuarioActivo } = useUser();
+  const { usuario } = useSesion();
+  const usuarioActivo = usuario?.nombre ?? '';
 
-  const [contactos, setContactos] = useState<Contacto[]>(contactosIniciales);
+  const [contactos, setContactos] = useState<Contacto[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
-  const [vendedorFiltro, setVendedorFiltro] = useState('Todos');
   const [paginaActual, setPaginaActual] = useState(1);
 
-  // Estado para Ordenamiento
+  // Estado para Ordenamiento (cliente, sobre lo que ya devolvió la API)
   const [criterioOrden, setCriterioOrden] = useState<ColumnaOrden | null>(null);
   const [direccionOrden, setDireccionOrden] = useState<DireccionOrden>('asc');
 
   // Estado para Modal y Edición
   const [mostrarModal, setMostrarModal] = useState(false);
-  const [contactoEditarId, setContactoEditarId] = useState<string | null>(null);
+  const [contactoEditando, setContactoEditando] = useState<Contacto | null>(null);
   const [form, setForm] = useState<ContactoFormData>(FORM_INICIAL);
+  const [guardando, setGuardando] = useState(false);
+
+  // Estado para el diálogo de confirmación de borrado
+  const [contactoAEliminar, setContactoAEliminar] = useState<Contacto | null>(null);
+
+  const cargarContactos = useCallback(async (q: string) => {
+    setCargando(true);
+    try {
+      const query = q.trim() ? `?q=${encodeURIComponent(q.trim())}` : '';
+      const datos = await api.get<Contacto[]>(`/api/contactos${query}`);
+      setContactos(datos);
+    } catch (error) {
+      const mensaje = error instanceof ApiError ? error.message : 'No se pudieron cargar los contactos.';
+      toast.error(mensaje);
+      setContactos([]);
+    } finally {
+      setCargando(false);
+    }
+  }, []);
+
+  // Carga inicial + antirrebote de ~300ms cada vez que cambia la búsqueda.
+  useEffect(() => {
+    const temporizador = setTimeout(() => {
+      cargarContactos(busqueda);
+      setPaginaActual(1);
+    }, 300);
+    return () => clearTimeout(temporizador);
+  }, [busqueda, cargarContactos]);
 
   const resetForm = () => {
     setForm(FORM_INICIAL);
-    setContactoEditarId(null);
+    setContactoEditando(null);
   };
 
   const handleAbrirNuevo = () => {
@@ -39,27 +68,21 @@ export default function ContactosPage() {
   };
 
   const handleAbrirEditar = (c: Contacto) => {
-    setContactoEditarId(c.id);
+    setContactoEditando(c);
     setForm({
-      nombre: c.nombreOriginal || c.nombre,
-      apellidoPaterno: c.apellidoPaterno || '',
-      apellidoMaterno: c.apellidoMaterno || '',
-      telefono: c.telefono || '',
-      celular: c.celular || '',
-      email: c.email || '',
-      estado: c.estado || '',
-      localidad: c.localidad || '',
-      fuenteContacto: c.fuenteContacto || '',
-      estatus: c.estatus || '',
-      notas: c.notas || '',
+      nombre: c.nombre,
+      apellidoPaterno: c.apellidoPaterno,
+      apellidoMaterno: c.apellidoMaterno,
+      telefono: c.telefono,
+      celular: c.celular,
+      email: c.email,
+      estado: c.estado,
+      localidad: c.localidad,
+      fuenteContacto: c.fuenteContacto,
+      estatus: c.estatus,
+      notas: c.notas,
     });
     setMostrarModal(true);
-  };
-
-  const eliminarContacto = (id: string, nombre: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar a "${nombre}"?`)) {
-      setContactos((prev) => prev.filter((c) => c.id !== id));
-    }
   };
 
   const handleChangeForm = (
@@ -86,47 +109,36 @@ export default function ContactosPage() {
     }
   };
 
-  // 1. Filtrado de contactos
-  const contactosFiltrados = useMemo(() => {
-    return contactos.filter((c) => {
-      const texto = busqueda.toLowerCase();
-      const coincideTexto =
-        c.nombre.toLowerCase().includes(texto) ||
-        c.codigo.toLowerCase().includes(texto) ||
-        c.ubicacion.toLowerCase().includes(texto) ||
-        c.notas.toLowerCase().includes(texto);
-
-      if (vendedorFiltro === 'Mis contactos') {
-        return coincideTexto && c.autor === usuarioActivo;
-      }
-
-      return coincideTexto;
-    });
-  }, [contactos, busqueda, vendedorFiltro, usuarioActivo]);
-
-  // 2. Ordenamiento de contactos
+  // Ordenamiento sobre los contactos ya devueltos por el backend (máx. 50, ya filtrados por `q`)
   const contactosOrdenados = useMemo(() => {
-    if (!criterioOrden) return contactosFiltrados;
+    if (!criterioOrden) return contactos;
 
-    return [...contactosFiltrados].sort((a, b) => {
-      const valA = a[criterioOrden] || '';
-      const valB = b[criterioOrden] || '';
-
-      if (criterioOrden === 'fecha') {
-        const [diaA, mesA, anioA] = valA.split('/').map(Number);
-        const [diaB, mesB, anioB] = valB.split('/').map(Number);
-        const fechaA = new Date(anioA, mesA - 1, diaA).getTime();
-        const fechaB = new Date(anioB, mesB - 1, diaB).getTime();
-        return direccionOrden === 'asc' ? fechaA - fechaB : fechaB - fechaA;
+    const obtenerValor = (c: Contacto): string | number => {
+      switch (criterioOrden) {
+        case 'nombre':
+          return nombreCompleto(c).toLowerCase();
+        case 'ubicacion':
+          return ubicacionContacto(c).toLowerCase();
+        case 'fecha':
+          return new Date(c.createdAt).getTime();
+        default:
+          return (c[criterioOrden] || '').toString().toLowerCase();
       }
+    };
 
-      const comparacion = valA.localeCompare(valB, 'es', { sensitivity: 'base' });
+    return [...contactos].sort((a, b) => {
+      const valA = obtenerValor(a);
+      const valB = obtenerValor(b);
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return direccionOrden === 'asc' ? valA - valB : valB - valA;
+      }
+      const comparacion = String(valA).localeCompare(String(valB), 'es', { sensitivity: 'base' });
       return direccionOrden === 'asc' ? comparacion : -comparacion;
     });
-  }, [contactosFiltrados, criterioOrden, direccionOrden]);
+  }, [contactos, criterioOrden, direccionOrden]);
 
-  // 3. Cálculos de Paginación
-  const totalPaginas = Math.ceil(contactosOrdenados.length / REGISTROS_POR_PAGINA) || 1;
+  // Paginación en cliente sobre el máximo de 50 registros que entrega la API
+  const totalPaginas = Math.max(Math.ceil(contactosOrdenados.length / REGISTROS_POR_PAGINA), 1);
   const paginaValida = Math.min(paginaActual, totalPaginas);
 
   const contactosPaginados = useMemo(() => {
@@ -134,67 +146,48 @@ export default function ContactosPage() {
     return contactosOrdenados.slice(inicio, inicio + REGISTROS_POR_PAGINA);
   }, [contactosOrdenados, paginaValida]);
 
-  const guardarContacto = (e: React.FormEvent) => {
+  const guardarContacto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nombre.trim()) return;
+    if (!form.nombre.trim() || guardando) return;
 
-    const nombreCompleto = `${form.nombre} ${form.apellidoPaterno} ${form.apellidoMaterno}`.trim();
-
-    if (contactoEditarId) {
-      setContactos((prev) =>
-        prev.map((c) => {
-          if (c.id === contactoEditarId) {
-            return {
-              ...c,
-              nombre: nombreCompleto,
-              nombreOriginal: form.nombre,
-              apellidoPaterno: form.apellidoPaterno,
-              apellidoMaterno: form.apellidoMaterno,
-              telefono: form.telefono,
-              celular: form.celular,
-              email: form.email,
-              estado: form.estado,
-              localidad: form.localidad,
-              fuenteContacto: form.fuenteContacto,
-              ubicacion:
-                form.localidad && form.estado
-                  ? `${form.localidad}, ${form.estado}`
-                  : form.estado || c.ubicacion,
-              estatus: form.estatus || c.estatus,
-              notas: form.notas || '-',
-            };
-          }
-          return c;
-        })
-      );
-    } else {
-      const nuevo: Contacto = {
-        id: Date.now().toString(),
-        codigo: `ZAC-00${contactos.length + 1}`,
-        nombre: nombreCompleto,
-        nombreOriginal: form.nombre,
-        apellidoPaterno: form.apellidoPaterno,
-        apellidoMaterno: form.apellidoMaterno,
-        telefono: form.telefono,
-        celular: form.celular,
-        email: form.email,
-        estado: form.estado,
-        localidad: form.localidad,
-        fuenteContacto: form.fuenteContacto,
-        ubicacion:
-          form.localidad && form.estado
-            ? `${form.localidad}, ${form.estado}`
-            : form.estado || 'Sin especificar',
-        estatus: form.estatus || 'Primer contacto',
-        fecha: new Date().toLocaleDateString('es-MX'),
-        notas: form.notas || '-',
-        autor: usuarioActivo,
+    setGuardando(true);
+    try {
+      const payload = {
+        ...form,
+        mostrarEmpresariales: false,
+        empresariales: { rfc: '', cargo: '', razonSocial: '', actividadComercial: '' },
       };
-      setContactos([nuevo, ...contactos]);
-    }
 
-    resetForm();
-    setMostrarModal(false);
+      if (contactoEditando) {
+        await api.put(`/api/contactos/${contactoEditando.id}`, payload);
+        toast.success('Contacto actualizado correctamente.');
+      } else {
+        await api.post('/api/contactos', payload);
+        toast.success('Contacto creado correctamente.');
+      }
+
+      setMostrarModal(false);
+      resetForm();
+      await cargarContactos(busqueda);
+    } catch (error) {
+      const mensaje = error instanceof ApiError ? error.message : 'No se pudo guardar el contacto.';
+      toast.error(mensaje);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const confirmarEliminar = async () => {
+    if (!contactoAEliminar) return;
+    try {
+      await api.del(`/api/contactos/${contactoAEliminar.id}`);
+      toast.success(`Contacto "${nombreCompleto(contactoAEliminar)}" eliminado.`);
+      setContactoAEliminar(null);
+      await cargarContactos(busqueda);
+    } catch (error) {
+      const mensaje = error instanceof ApiError ? error.message : 'No se pudo eliminar el contacto.';
+      toast.error(mensaje);
+    }
   };
 
   return (
@@ -205,16 +198,8 @@ export default function ContactosPage() {
       <div className="bg-white rounded-3xl p-8 shadow-xl space-y-6">
         <ContactosFiltros
           busqueda={busqueda}
-          onBusquedaChange={(val) => {
-            setBusqueda(val);
-            setPaginaActual(1);
-          }}
-          vendedorFiltro={vendedorFiltro}
-          onVendedorFiltroChange={(val) => {
-            setVendedorFiltro(val);
-            setPaginaActual(1);
-          }}
-          usuarioActivo={usuarioActivo}
+          onBusquedaChange={setBusqueda}
+          cargando={cargando}
           criterioOrden={criterioOrden}
           onRestablecerOrden={() => setCriterioOrden(null)}
           onNuevoContacto={handleAbrirNuevo}
@@ -226,30 +211,46 @@ export default function ContactosPage() {
           direccionOrden={direccionOrden}
           onOrdenar={handleOrdenar}
           onEditar={handleAbrirEditar}
-          onEliminar={eliminarContacto}
+          onEliminar={setContactoAEliminar}
         />
 
-        <ContactosPaginacion
+        <Pagination
           paginaActual={paginaValida}
           totalPaginas={totalPaginas}
           totalRegistros={contactosOrdenados.length}
-          registrosPorPagina={REGISTROS_POR_PAGINA}
-          onCambiarPagina={setPaginaActual}
+          onCambiar={setPaginaActual}
         />
       </div>
 
       {/* MODAL NUEVO / EDITAR CONTACTO */}
       <ModalContacto
-        isOpen={mostrarModal}
-        esEdicion={Boolean(contactoEditarId)}
+        abierto={mostrarModal}
+        esEdicion={Boolean(contactoEditando)}
         usuarioActivo={usuarioActivo}
         form={form}
+        guardando={guardando}
         onChange={handleChangeForm}
         onSubmit={guardarContacto}
         onCerrar={() => {
+          if (guardando) return;
           resetForm();
           setMostrarModal(false);
         }}
+      />
+
+      {/* CONFIRMACIÓN DE BORRADO */}
+      <ConfirmDialog
+        abierto={Boolean(contactoAEliminar)}
+        onCerrar={() => setContactoAEliminar(null)}
+        onConfirmar={confirmarEliminar}
+        titulo="Eliminar contacto"
+        mensaje={
+          contactoAEliminar
+            ? `¿Estás seguro de que deseas eliminar a "${nombreCompleto(contactoAEliminar)}"? Esta acción no se puede deshacer.`
+            : ''
+        }
+        textoConfirmar="Eliminar"
+        peligroso
       />
     </div>
   );

@@ -63,7 +63,9 @@ export const guardarProyectoSchema = z.object({
   datosProyecto: datosProyectoSchema,
   equipo: equipoSeleccionadoSchema,
   otrosCargos: otrosCargosSchema,
-  estatus: z.enum(['borrador', 'cotizado', 'enviado', 'vendido', 'perdido']).default('borrador'),
+  /// Slug de la fase del funnel. Sustituye al antiguo `estatus`: las fases son
+  /// datos editables, así que no se puede restringir con un enum cerrado.
+  faseSlug: z.string().min(1).default('borrador'),
   pasoActual: z.number().min(1).max(5).default(1),
 });
 

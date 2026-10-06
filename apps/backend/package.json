@@ -9,9 +9,11 @@
     "start": "node src/server.ts",
     "test": "node --test 'src/**/*.test.ts'",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "admin:recover": "node scripts/admin-recover.ts"
   },
   "dependencies": {
+    "@cotizador/cfe-scraper": "workspace:*",
     "@cotizador/shared": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "@hono/zod-validator": "^0.9.1",

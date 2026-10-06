@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { TriangleAlert } from 'lucide-react';
+import { Icono } from '../../../components/Icono';
+import type { EscalonTarifa } from '@cotizador/shared';
 import {
   Card,
   ResumenEmpresa,
@@ -69,6 +72,15 @@ export interface Paso5ConfirmacionProps {
   // Acciones / Navegación
   limiteDacKwh?: number | null;
   costoPromedioKwh?: number;
+
+  // Tarifa real de CFE (packages/shared/calculos/importeCfe + bancoSolar)
+  pagoMinimoCfe?: number;
+  factoresEstacionales?: number[];
+  /** Escalones reales de CFE por periodo, alineados por índice con `consumos`. */
+  escalonesPorPeriodo?: Array<EscalonTarifa[] | null>;
+  /** `true` cuando falta tarifa real para algún periodo: el retorno de inversión mostrado es aproximado. */
+  calculoAproximado?: boolean;
+
   proyectoId?: string;
   guardando?: boolean;
   errorGuardado?: string | null;
@@ -107,6 +119,10 @@ export default function Paso5Confirmacion({
   empresa,
   limiteDacKwh = null,
   costoPromedioKwh = 0,
+  pagoMinimoCfe,
+  factoresEstacionales,
+  escalonesPorPeriodo,
+  calculoAproximado = false,
   proyectoId,
   guardando = false,
   errorGuardado = null,
@@ -215,10 +231,21 @@ export default function Paso5Confirmacion({
       />
 
       {/* 9. DETALLE DEL RETORNO DE INVERSIÓN (TABLA PERIODOS Y BANCO SOLAR) */}
+      {calculoAproximado && (
+        <div className="flex items-start gap-2 bg-orange-50 text-orange-700 rounded-xl px-3 py-2.5">
+          <Icono icon={TriangleAlert} size={16} className="shrink-0 mt-0.5" />
+          <p className="text-xs leading-relaxed">
+            Cálculo aproximado: sin tarifas de CFE para algunos periodos. El retorno de inversión
+            de abajo usa el promedio histórico pago/kWh en vez de la tarifa escalonada real.
+          </p>
+        </div>
+      )}
       <TablaRetornoInversion
         consumos={consumos}
         produccion={produccion}
-        nuevoPago={nuevoPago}
+        pagoMinimoCfe={pagoMinimoCfe}
+        factoresEstacionales={factoresEstacionales}
+        escalonesPorPeriodo={escalonesPorPeriodo}
       />
 
       {/* 10. GRÁFICA DE GASTO ACUMULADO */}

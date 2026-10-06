@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { GuardarProyectoPayload, EstatusProyecto } from '@cotizador/shared';
+import type { GuardarProyectoPayload } from '@cotizador/shared';
 import { api } from '../../../../lib/api';
 import type {
   DatosContacto,
@@ -45,7 +45,7 @@ export interface DatosParaGuardar {
   pasoActual: number;
 }
 
-function construirPayload(datos: DatosParaGuardar, estatus: EstatusProyecto): GuardarProyectoPayload {
+function construirPayload(datos: DatosParaGuardar, faseSlug: string): GuardarProyectoPayload {
   return {
     datosContacto: datos.datosContacto,
     datosProyecto: {
@@ -82,7 +82,7 @@ function construirPayload(datos: DatosParaGuardar, estatus: EstatusProyecto): Gu
       cargosEditables: datos.cargosEditables,
       conceptos: datos.conceptos,
     },
-    estatus,
+    faseSlug,
     pasoActual: datos.pasoActual,
   };
 }
@@ -92,11 +92,11 @@ export function useGuardarProyecto(proyectoIdInicial?: string) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function guardar(datos: DatosParaGuardar, estatus: EstatusProyecto): Promise<any> {
+  async function guardar(datos: DatosParaGuardar, faseSlug: string): Promise<any> {
     setGuardando(true);
     setError(null);
     try {
-      const payload = construirPayload(datos, estatus);
+      const payload = construirPayload(datos, faseSlug);
       const proyecto = proyectoId
         ? await api.put<any>(`/api/proyectos/${proyectoId}`, payload)
         : await api.post<any>('/api/proyectos', payload);

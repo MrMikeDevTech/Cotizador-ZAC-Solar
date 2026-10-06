@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Car, Cloud, TreeDeciduous } from 'lucide-react';
+import { Icono } from '../../../../components/Icono';
 import Card from './Card';
 import { calcularBeneficiosAmbientales } from './calculosConfirmacion';
 
@@ -21,7 +23,7 @@ export default function BeneficioAmbiental({
     <Card title="Beneficio ambiental anual">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-3 text-center">
         <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100/80">
-          <span className="text-3xl block mb-2">☁️</span>
+          <Icono icon={Cloud} size={28} className="mx-auto mb-2 text-[#2dd4bf]" />
           <p className="text-base font-bold text-gray-800">
             {kgCO2 > 0 ? kgCO2.toLocaleString('es-MX') : '0.00'} kgCO₂
           </p>
@@ -29,7 +31,7 @@ export default function BeneficioAmbiental({
         </div>
 
         <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100/80">
-          <span className="text-3xl block mb-2">🌳</span>
+          <Icono icon={TreeDeciduous} size={28} className="mx-auto mb-2 text-[#2dd4bf]" />
           <p className="text-base font-bold text-gray-800">
             {arboles > 0 ? arboles.toLocaleString('es-MX') : '0'} árboles
           </p>
@@ -37,7 +39,7 @@ export default function BeneficioAmbiental({
         </div>
 
         <div className="bg-gray-50/70 p-4 rounded-xl border border-gray-100/80">
-          <span className="text-3xl block mb-2">🚗</span>
+          <Icono icon={Car} size={28} className="mx-auto mb-2 text-[#2dd4bf]" />
           <p className="text-base font-bold text-gray-800">
             {kmAuto > 0 ? kmAuto.toLocaleString('es-MX') : '0.00'} km
           </p>

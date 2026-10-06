@@ -3,18 +3,17 @@ productName: Cotizador
 copyright: Copyright © 2026 MrMikeDev
 directories:
   output: release
-# main.js/preload.js ya son bundles (bun build) con @cotizador/backend y
-# @cotizador/shared incluidos; solo los módulos nativos/binarios de Prisma
-# quedan como dependencias reales en node_modules (ver npmRebuild/asarUnpack).
+# main.js/preload.js ya son bundles (bun build) con @cotizador/backend,
+# @cotizador/shared y @cotizador/cfe-scraper incluidos. Los únicos externos del
+# bundle son better-sqlite3 (nativo), @prisma/client y su adaptador: están
+# declarados como dependencias de este paquete y electron-builder los recolecta
+# solo con eso (computeNodeModuleFileSets resuelve el árbol de producción, y con
+# bun los módulos viven izados en el node_modules de la raíz del monorepo — un
+# patrón `node_modules/...` aquí no apuntaría a nada).
 files:
   - electron/dist/**/*
   - renderer/out/**/*
   - package.json
-  - node_modules/better-sqlite3/**/*
-  - node_modules/@prisma/client/**/*
-  - node_modules/@prisma/adapter-better-sqlite3/**/*
-  - node_modules/bindings/**/*
-  - node_modules/file-uri-to-path/**/*
 # Copia las migraciones de Prisma (SQL, no código) como recurso aparte —
 # resolveMigrationsDir() en main.ts las busca en resources/backend-prisma-migrations.
 extraResources:

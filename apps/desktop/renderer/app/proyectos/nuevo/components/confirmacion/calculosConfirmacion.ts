@@ -1,5 +1,10 @@
 import { ConsumoPeriodo, FilaRetornoInversion } from '../../types';
 import { PAGO_MINIMO_CFE } from '../../constants';
+import {
+  calcularProduccionEstacional as calcularProduccionEstacionalShared,
+  calcularDetalleRetornoInversion as calcularDetalleRetornoInversionShared,
+} from '@cotizador/shared';
+import type { EscalonTarifa } from '@cotizador/shared';
 
 /**
  * Genera un código abreviado a partir de un nombre y número/sufijo
@@ -30,93 +35,41 @@ export function formatearMoneda(monto: number, moneda: string = 'MXN'): string {
 }
 
 /**
- * Calcula la producción solar estimada por periodo con variaciones estacionales típicas
+ * Calcula la producción solar estimada por periodo con variaciones estacionales típicas.
+ *
+ * Delega en `@cotizador/shared` (fuente única de verdad del cálculo); se
+ * conserva esta envoltura para no romper los imports existentes desde
+ * `./confirmacion`.
  */
 export function calcularProduccionEstacional(produccionBimestral: number, totalPeriodos: number = 6): number[] {
-  if (produccionBimestral <= 0) return Array(totalPeriodos).fill(0);
-  
-  // Factores estacionales de radiación solar en México (primavera/verano mayor que invierno)
-  // Índices aproximados para 6 bimestres
-  const factores = [1.10, 0.97, 0.88, 1.00, 0.89, 1.10];
-  return factores.slice(0, totalPeriodos).map(factor => Math.round(produccionBimestral * factor));
+  return calcularProduccionEstacionalShared(produccionBimestral, totalPeriodos);
 }
 
 /**
- * Calcula el desglose detallado de Retorno de Inversión periodo a periodo con Banco Solar
+ * Calcula el desglose detallado de Retorno de Inversión periodo a periodo con Banco Solar.
+ *
+ * Delega en `@cotizador/shared`. Antes esta función duplicaba la lógica
+ * localmente con un bug: el tercer parámetro (pensado como el pago mínimo
+ * de CFE) se recibía pero nunca se usaba — el cuerpo siempre cobraba la
+ * constante `PAGO_MINIMO_CFE` del wizard, sin importar lo que llegara. La
+ * versión compartida corrige eso y, opcionalmente, acepta los escalones
+ * reales de CFE por periodo para calcular el nuevo pago con la tarifa
+ * escalonada real en vez de promediar pago/kWh histórico.
  */
 export function calcularDetalleRetornoInversion(
   consumos: ConsumoPeriodo[],
   produccionBimestral: number,
-  nuevoPagoPromedio: number = PAGO_MINIMO_CFE
-): { filas: FilaRetornoInversion[]; ahorroAnualTotal: number } {
-  // Tomamos los 6 periodos en orden cronológico o inverso según esté capturado
-  const produccionesEstacionales = calcularProduccionEstacional(produccionBimestral, consumos.length);
-  
-  let bancoSolarAcumulado = 0;
-  const filas: FilaRetornoInversion[] = [];
-  let ahorroAnualTotal = 0;
-
-  for (let i = 0; i < consumos.length; i++) {
-    const item = consumos[i];
-    const consumoHistorico = Number(item.kwh) || 0;
-    const pagoHistorico = Number(item.pago) || 0;
-    const energiaGenerada = produccionesEstacionales[i] || Math.round(produccionBimestral);
-
-    // Diferencia: Consumo - Generación
-    // Si generó más de lo consumido, la diferencia es negativa (excedente)
-    const diferencia = consumoHistorico - energiaGenerada;
-
-    let nuevoConsumo = 0;
-    let bancoSolar = 0;
-    let nuevoPagoCFE = 0;
-
-    if (diferencia < 0) {
-      // Excedente de energía generado
-      const excedente = Math.abs(diferencia);
-      bancoSolarAcumulado += excedente;
-      bancoSolar = bancoSolarAcumulado;
-      nuevoConsumo = -bancoSolarAcumulado;
-      nuevoPagoCFE = PAGO_MINIMO_CFE;
-    } else {
-      // Consumió más de lo generado (déficit)
-      if (bancoSolarAcumulado >= diferencia) {
-        bancoSolarAcumulado -= diferencia;
-        bancoSolar = bancoSolarAcumulado;
-        nuevoConsumo = -bancoSolarAcumulado;
-        nuevoPagoCFE = PAGO_MINIMO_CFE;
-      } else {
-        const kwhRestantes = diferencia - bancoSolarAcumulado;
-        bancoSolarAcumulado = 0;
-        bancoSolar = 0;
-        nuevoConsumo = kwhRestantes;
-
-        const costoKwhPromedio = consumoHistorico > 0 ? pagoHistorico / consumoHistorico : 2.5;
-        nuevoPagoCFE = Math.max(PAGO_MINIMO_CFE, Math.round(kwhRestantes * costoKwhPromedio * 100) / 100);
-      }
-    }
-
-    // Ahorro del periodo
-    const ahorroPeriodo = Math.max(0, pagoHistorico - nuevoPagoCFE);
-    ahorroAnualTotal += ahorroPeriodo;
-
-    const periodoStr = item.inicioStr && item.terminoStr
-      ? `${item.inicioStr} - ${item.terminoStr}`
-      : `Periodo ${i + 1}`;
-
-    filas.push({
-      periodo: periodoStr,
-      consumoHistorico,
-      energiaGenerada,
-      diferencia,
-      nuevoConsumo,
-      bancoSolar,
-      nuevoPagoCFE: pagoHistorico > 0 ? nuevoPagoCFE : (produccionBimestral > 0 ? PAGO_MINIMO_CFE : 0),
-      pagoHistorico,
-      ahorroPeriodo: pagoHistorico > 0 ? ahorroPeriodo : 0,
-    });
-  }
-
-  return { filas, ahorroAnualTotal };
+  pagoMinimoCfe: number = PAGO_MINIMO_CFE,
+  factoresEstacionales?: number[],
+  escalonesPorPeriodo?: Array<EscalonTarifa[] | null>
+): { filas: FilaRetornoInversion[]; ahorroAnualTotal: number; usoTarifaReal: boolean } {
+  return calcularDetalleRetornoInversionShared(
+    consumos,
+    produccionBimestral,
+    pagoMinimoCfe,
+    factoresEstacionales,
+    escalonesPorPeriodo
+  );
 }
 
 /**
