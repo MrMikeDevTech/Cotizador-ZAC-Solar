@@ -9,7 +9,7 @@
   "scripts": {
     "build:electron": "cd ../.. && bun build apps/desktop/electron/main.ts apps/desktop/electron/preload.ts --target=node --format=esm --outdir=apps/desktop/electron/dist --external=electron --external=better-sqlite3 --external=@prisma/client --external=@prisma/adapter-better-sqlite3",
     "start": "bun run build:electron && electron .",
-    "dist": "bun run build:electron && electron-builder --config electron-builder.yml"
+    "dist": "bun run build:electron && node scripts/verificar-empaquetado.mjs && electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "@cotizador/backend": "workspace:*",

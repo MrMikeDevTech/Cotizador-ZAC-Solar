@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Mail, Lock, User, Loader2, LogIn, UserPlus } from 'lucide-react';
+import { Mail, Lock, User, Loader2, LogIn, UserPlus, RotateCw, TriangleAlert } from 'lucide-react';
 import { Icono } from '../components/Icono';
 import { api, ApiError } from '../../lib/api';
 import { useSesion } from '../../lib/SesionContext';
@@ -22,6 +22,7 @@ export default function LoginPage() {
 
   const [hayUsuarios, setHayUsuarios] = useState<EstadoSistema>(null);
   const [consultandoEstado, setConsultandoEstado] = useState(true);
+  const [falloConsulta, setFalloConsulta] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   const [email, setEmail] = useState('');
@@ -29,18 +30,28 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [confirmacion, setConfirmacion] = useState('');
 
-  useEffect(() => {
+  /**
+   * Averigua si el sistema ya tiene cuentas. Mientras no se sepa con certeza,
+   * **no** se muestra ningún formulario: enseñar el de inicio de sesión tras un
+   * fallo de red dejaba al usuario pidiendo entrar con una cuenta que quizá no
+   * existe todavía, sin salida ni explicación. Y nunca se asume lo contrario,
+   * porque el alta del primer administrador no puede quedar expuesta por un
+   * simple error de conexión.
+   */
+  const consultarEstado = useCallback(() => {
+    setConsultandoEstado(true);
+    setFalloConsulta(false);
+
     api
       .get<{ hayUsuarios: boolean }>('/api/auth/estado')
       .then((datos) => setHayUsuarios(datos.hayUsuarios))
-      .catch(() => {
-        // Sin backend disponible: se asume que sí hay usuarios para no
-        // exponer el formulario de "primer admin" por error de red.
-        setHayUsuarios(true);
-        toast.error('No se pudo conectar con el servidor local.');
-      })
+      .catch(() => setFalloConsulta(true))
       .finally(() => setConsultandoEstado(false));
   }, []);
+
+  useEffect(() => {
+    consultarEstado();
+  }, [consultarEstado]);
 
   const esPrimerRegistro = hayUsuarios === false;
 
@@ -92,6 +103,22 @@ export default function LoginPage() {
 
         {consultandoEstado ? (
           <p className="text-sm text-gray-400 text-center py-6">Cargando…</p>
+        ) : falloConsulta ? (
+          <div className="space-y-4 text-center py-2">
+            <Icono icon={TriangleAlert} size={28} className="mx-auto text-[#f7931e]" />
+            <p className="text-sm text-gray-600 leading-relaxed">
+              No se pudo contactar con el servidor interno de la aplicación. Cierra la ventana y
+              vuelve a abrir el Cotizador; si el problema sigue, reinicia el equipo.
+            </p>
+            <button
+              type="button"
+              onClick={consultarEstado}
+              className="w-full bg-[#00388d] hover:bg-blue-900 text-white font-bold text-sm px-6 py-3 rounded-full shadow-md transition-colors cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Icono icon={RotateCw} size={16} />
+              Reintentar
+            </button>
+          </div>
         ) : (
           <form onSubmit={manejarEnvio} className="space-y-4">
             {esPrimerRegistro && (

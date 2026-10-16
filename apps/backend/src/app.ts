@@ -19,7 +19,26 @@ import { usuariosRoutes } from './routes/usuarios.ts';
 import { agendaRoutes } from './routes/agenda.ts';
 import { reportesRoutes } from './routes/reportes.ts';
 
-const ORIGENES_PERMITIDOS = ['http://localhost:3000', 'http://127.0.0.1:3000', 'null'];
+/**
+ * Orígenes locales, con **cualquier** puerto. Dentro del Electron empaquetado
+ * el renderer y la API escuchan en puertos efímeros distintos (`port: 0`), así
+ * que fijar el 3000 de desarrollo dejaba fuera a la app instalada: el navegador
+ * bloqueaba todas las respuestas y ni el alta del primer administrador
+ * funcionaba.
+ *
+ * Es seguro aceptar cualquier puerto local porque el servidor sólo escucha en
+ * 127.0.0.1 (inalcanzable desde fuera del equipo) y la sesión viaja en un
+ * header `Authorization`, no en cookies: una página externa no puede adjuntarlo.
+ * Un origen remoto sigue siendo rechazado.
+ */
+const PATRON_ORIGEN_LOCAL = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/;
+
+/** `'null'` es el origen que manda un documento cargado con `file://`. */
+const ORIGEN_SIN_ORIGEN = 'null';
+
+function esOrigenPermitido(origin: string): boolean {
+  return origin === ORIGEN_SIN_ORIGEN || PATRON_ORIGEN_LOCAL.test(origin);
+}
 
 /**
  * Fábrica de la app: recibe el cliente Prisma ya conectado a la DB correcta
@@ -32,7 +51,10 @@ export function crearApp(prisma: PrismaClient) {
   app.use(
     '*',
     cors({
-      origin: (origin) => (origin && ORIGENES_PERMITIDOS.includes(origin) ? origin : ORIGENES_PERMITIDOS[0]!),
+      // Devolver `null` cuando el origen no está permitido hace que Hono omita
+      // el header `Access-Control-Allow-Origin` y el navegador bloquee la
+      // respuesta, que es lo que queremos para un origen remoto.
+      origin: (origin) => (origin && esOrigenPermitido(origin) ? origin : null),
     })
   );
 
