@@ -13,6 +13,7 @@ import {
 } from '../app/proyectos/nuevo/constants';
 import { FACTORES_CALCULO_DEFECTO as factoresDefecto, TARIFAS_INICIALES as tarifasDefecto } from '@cotizador/shared';
 import { api } from './api';
+import { useSesion } from './SesionContext';
 
 export interface TarifaConfig {
   codigo: string;
@@ -70,6 +71,13 @@ interface RespuestaConfig {
 const VENTANA_ANTIRREBOTE_MS = 2000;
 
 export function ConfiguracionProvider({ children }: { children: ReactNode }) {
+  // `/api/config` exige sesión. Este provider envuelve toda la app (incluida la
+  // pantalla de login), así que sin consultar la sesión antes dispararía un 401
+  // garantizado en cada arranque en frío — y ese 401, al pasar por `lib/api.ts`,
+  // borra el token y limpia la sesión, de modo que el propio provider echaba
+  // fuera a quien acabara de entrar.
+  const { usuario, cargando: cargandoSesion } = useSesion();
+
   const [estado, setEstado] = useState<Omit<ValorConfiguracion, 'refrescar' | 'invalidar'>>({
     paneles: panelesDefecto,
     inversores: inversoresDefecto,
@@ -180,14 +188,27 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
     ultimaRevalidacionRef.current = 0;
   }, []);
 
-  // Carga inicial.
+  // Carga inicial, en cuanto hay sesión. Al entrar (null -> usuario) este
+  // efecto vuelve a correr y trae la configuración; al salir se descarta la
+  // `version` para que el siguiente inicio de sesión no reutilice la caché.
   useEffect(() => {
+    if (cargandoSesion) return;
+
+    if (!usuario) {
+      versionRef.current = null;
+      ultimaRevalidacionRef.current = 0;
+      setEstado((prev) => ({ ...prev, conectado: false, cargando: false }));
+      return;
+    }
+
     cargarConfig({ mostrarCargando: true, ignorarAntirrebote: true });
-  }, [cargarConfig]);
+  }, [usuario, cargandoSesion, cargarConfig]);
 
   // Revalida al recuperar el foco de la ventana (clic de vuelta a la app, o
   // cambio de pestaña/ventana del sistema operativo).
   useEffect(() => {
+    if (!usuario) return;
+
     const manejarFoco = () => revalidarSilencioso();
     const manejarVisibilidad = () => {
       if (document.visibilityState === 'visible') revalidarSilencioso();
@@ -198,7 +219,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', manejarFoco);
       document.removeEventListener('visibilitychange', manejarVisibilidad);
     };
-  }, [revalidarSilencioso]);
+  }, [usuario, revalidarSilencioso]);
 
   // Revalida al cambiar de ruta (p. ej. volver de /config/catalogo al
   // wizard), salvo en el montaje inicial, que ya dispara su propia carga.
@@ -208,8 +229,9 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
       montadoRef.current = true;
       return;
     }
+    if (!usuario) return;
     revalidarSilencioso();
-  }, [pathname, revalidarSilencioso]);
+  }, [pathname, usuario, revalidarSilencioso]);
 
   return (
     <ConfiguracionContext.Provider value={{ ...estado, refrescar, invalidar }}>

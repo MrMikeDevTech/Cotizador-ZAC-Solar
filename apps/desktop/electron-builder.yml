@@ -26,6 +26,14 @@ asarUnpack:
 npmRebuild: true
 win:
   target: nsis
+  # Generado desde renderer/public/logo.jpeg (ver README). Sin esto, el
+  # ejecutable y el instalador saldrían con el logotipo genérico de Electron.
+  icon: build/icon.ico
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # Instalación por usuario: no pide permisos de administrador al cliente.
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Cotizador

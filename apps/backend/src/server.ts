@@ -65,6 +65,24 @@ const servidor = serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info)
   console.log(`Cotizador Solar backend escuchando en http://127.0.0.1:${info.port}`);
 });
 
+// Sin este manejador, un puerto ocupado sale como un `Unhandled 'error' event`
+// con volcado de pila de node:net, que no dice qué hacer. El caso habitual es
+// tener ya otro `dev:backend` abierto. (Dentro de Electron no aplica: ahí el
+// puerto es 0, así que el sistema asigna uno libre.)
+servidor.on('error', (error: NodeJS.ErrnoException) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `\nEl puerto ${port} ya está en uso.\n` +
+        '  Lo más probable es que ya tengas otro `bun run dev:backend` abierto.\n' +
+        '  Cierra el anterior, o arranca este en otro puerto:\n' +
+        `    PORT=3002 bun run dev:backend\n`
+    );
+  } else {
+    console.error('\nEl backend no pudo arrancar:', error.message, '\n');
+  }
+  process.exit(1);
+});
+
 // Sincronización de tarifas CFE en segundo plano. Deliberadamente sin `await`:
 // la app es offline-first y el arranque nunca puede depender de la red.
 void sincronizarTarifasCfeEnSegundoPlano();

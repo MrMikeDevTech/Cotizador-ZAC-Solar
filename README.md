@@ -86,8 +86,84 @@ bun run dev:renderer       # next dev en http://localhost:3000
 
 bun run build:renderer     # export estático → apps/desktop/renderer/out
 bun run start              # compila electron/ y lanza `electron .` (requiere out/ generado)
-bun run dist               # empaqueta instalador (electron-builder)
+bun run dist               # instalador completo: frontend + bundle + electron-builder
 ```
+
+## Generar el instalador para el cliente
+
+En **Windows**, con [Visual Studio Build Tools](#requisitos) ya instalado:
+
+```bash
+bun install
+bun run dist
+```
+
+`bun run dist` hace los cuatro pasos en orden —export del frontend, bundle del
+proceso principal, verificación previa y `electron-builder`— y deja el
+instalador en `apps/desktop/release/`. Antes de empaquetar, una comprobación
+automática (`apps/desktop/scripts/verificar-empaquetado.mjs`) aborta con un
+mensaje claro si falta algo que rompería la app ya instalada: el frontend sin
+exportar, el bundle sin el scraper o sin el certificado de CFE, o las
+migraciones ausentes. Son fallos que de otro modo solo se verían cuando el
+cliente ya tiene el instalador.
+
+El instalador es un asistente NSIS por usuario (`perMachine: false`), así que
+**no pide permisos de administrador**, deja elegir carpeta y crea los accesos
+directos de escritorio y menú inicio. El icono sale de
+`apps/desktop/build/icon.ico`, generado desde el logo con ImageMagick:
+
+```bash
+cd apps/desktop
+magick renderer/public/logo.jpeg -resize 256x256^ -gravity center -extent 256x256 \
+  -define icon:auto-resize=256,128,64,48,32,16 build/icon.ico
+```
+
+Ya está versionado; solo hay que repetirlo si cambia el logo.
+
+### Qué vive el cliente al instalar
+
+No necesita saber nada de programación ni inicializar nada:
+
+1. Ejecuta el instalador y abre el Cotizador.
+2. En el primer arranque la app crea su base de datos en
+   `%APPDATA%\Cotizador\cotizador.db`, aplica las migraciones y siembra los
+   catálogos (paneles, inversores, estructuras, conceptos, tarifas y
+   localidades).
+3. Como no hay ninguna cuenta, la pantalla de inicio muestra **"Crear cuenta de
+   administrador"**. Al enviarla queda como `rol=admin` y la sesión se inicia
+   sola.
+4. A partir de ahí ese formulario no vuelve a aparecer: `POST
+   /api/auth/primer-admin` responde `409 YA_INICIALIZADO` si ya existe algún
+   usuario. Las demás cuentas se crean desde el CRM.
+
+## Recuperar acceso de administrador
+
+La app siempre mantiene al menos un administrador activo: no se puede
+desactivar, borrar ni degradar al último que quede. Aun así, si se pierde la
+contraseña, el acceso se recupera desde la terminal del equipo donde corre el
+backend:
+
+```bash
+cd apps/backend
+
+# Listar los usuarios y cuántos admins activos hay
+bun run admin:recover
+
+# Crear el usuario como admin, o promoverlo y reactivarlo si ya existe
+bun run admin:recover -- --email correo@ejemplo.com --password nuevaClave123
+```
+
+Por defecto escribe en `apps/backend/dev.db`; para la base de la app instalada
+hay que apuntarla con `DATABASE_URL`:
+
+```bash
+DATABASE_URL="file:%APPDATA%\Cotizador\cotizador.db" bun run admin:recover -- --email … --password …
+```
+
+Es seguro que esto sea un script de consola y no un endpoint: requiere acceso al
+sistema de archivos del equipo, que es la frontera de confianza real en una app
+de escritorio —quien puede ejecutarlo ya podría copiar el `.db` o reinstalar la
+app. Nada de esto se expone por HTTP.
 
 ## Dev con Electron + Next con HMR
 

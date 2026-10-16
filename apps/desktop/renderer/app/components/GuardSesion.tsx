@@ -8,6 +8,19 @@ import { NavPrincipal } from './NavPrincipal';
 const RUTA_LOGIN = '/login';
 
 /**
+ * Quita la barra final de una ruta, dejando `/` intacta.
+ *
+ * `next.config.ts` usa `trailingSlash: true` (lo necesita el export estático),
+ * así que la URL canónica del login es `/login/` y `usePathname()` devuelve la
+ * barra. Comparar en crudo contra `'/login'` daba `false` **estando** en el
+ * login: el guard se creía fuera, se quedaba en la pantalla "Cargando…" y
+ * redirigía a `/login` en bucle.
+ */
+function normalizarRuta(ruta: string): string {
+  return ruta.length > 1 ? ruta.replace(/\/+$/, '') : ruta;
+}
+
+/**
  * Controla el acceso a toda la aplicación según el estado de sesión:
  * - Sin sesión y fuera de `/login` → redirige a `/login`.
  * - Con sesión y dentro de `/login` → redirige a `/`.
@@ -20,7 +33,7 @@ export function GuardSesion({ children }: { children: ReactNode }) {
   const { usuario, cargando } = useSesion();
   const pathname = usePathname();
   const router = useRouter();
-  const enLogin = pathname === RUTA_LOGIN;
+  const enLogin = normalizarRuta(pathname) === RUTA_LOGIN;
 
   useEffect(() => {
     if (cargando) return;
