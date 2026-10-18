@@ -25,7 +25,7 @@ function resolverBaseUrl(): string {
   if (typeof window !== 'undefined' && window.api?.apiBaseUrl) {
     return window.api.apiBaseUrl;
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+  return process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:28914';
 }
 
 export class ApiError extends Error {
@@ -44,8 +44,31 @@ export class ApiError extends Error {
 /** Clave de localStorage donde se guarda el token de sesión. */
 const CLAVE_TOKEN = 'zac-solar.token';
 
+/**
+ * Token efímero que el backend pone en la URL al renderizar un PDF
+ * (`/documentos/imprimir/?…&render=<token>`). Ese render ocurre en un
+ * navegador headless con perfil limpio: no hay `localStorage` que compartir,
+ * así que la vista de impresión sólo puede autenticarse con lo que venga en
+ * la URL. Lo mintea y lo revoca `GET /api/documentos/pdf/:tipo/:proyectoId`.
+ */
+function leerTokenDeRender(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return new URLSearchParams(window.location.search).get('render');
+  } catch {
+    return null;
+  }
+}
+
+/** `true` cuando la página se está cargando para generar un PDF. */
+export function enContextoDeRender(): boolean {
+  return leerTokenDeRender() !== null;
+}
+
 export function leerToken(): string | null {
   if (typeof window === 'undefined') return null;
+  const deRender = leerTokenDeRender();
+  if (deRender) return deRender;
   try {
     return window.localStorage.getItem(CLAVE_TOKEN);
   } catch {
@@ -103,7 +126,10 @@ async function peticion<T>(ruta: string, opciones?: RequestInit): Promise<T> {
       // sin cuerpo JSON
     }
 
-    if (respuesta.status === 401) {
+    // En un render no se toca la sesión del usuario: el 401 sería del token
+    // efímero de la URL, y borrar `localStorage` aquí dejaría al usuario
+    // fuera de la app por haber descargado un PDF.
+    if (respuesta.status === 401 && !enContextoDeRender()) {
       borrarToken();
       manejadorNoAutorizado?.();
     }
@@ -120,8 +146,45 @@ async function peticion<T>(ruta: string, opciones?: RequestInit): Promise<T> {
   return respuesta.json() as Promise<T>;
 }
 
+/**
+ * Descarga un archivo binario de la API. Devuelve el blob y el nombre que
+ * propuso el servidor en `Content-Disposition`, que es quien sabe cómo se
+ * debe llamar el documento.
+ */
+async function descargar(ruta: string): Promise<{ blob: Blob; nombreArchivo: string | null }> {
+  const token = leerToken();
+  const respuesta = await fetch(`${resolverBaseUrl()}${ruta}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!respuesta.ok) {
+    let cuerpo: any = null;
+    try {
+      cuerpo = await respuesta.json();
+    } catch {
+      // sin cuerpo JSON
+    }
+    if (respuesta.status === 401 && !enContextoDeRender()) {
+      borrarToken();
+      manejadorNoAutorizado?.();
+    }
+    throw new ApiError(
+      cuerpo?.error?.codigo ?? 'ERROR_DESCONOCIDO',
+      cuerpo?.error?.mensaje ?? `Error ${respuesta.status}`,
+      respuesta.status,
+      cuerpo?.error?.detalles
+    );
+  }
+
+  const disposicion = respuesta.headers.get('Content-Disposition');
+  const coincidencia = disposicion?.match(/filename="([^"]+)"/);
+
+  return { blob: await respuesta.blob(), nombreArchivo: coincidencia?.[1] ?? null };
+}
+
 export const api = {
   get: <T>(ruta: string) => peticion<T>(ruta),
+  descargar,
   post: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'POST', body: JSON.stringify(body) }),
   put: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'PATCH', body: JSON.stringify(body) }),

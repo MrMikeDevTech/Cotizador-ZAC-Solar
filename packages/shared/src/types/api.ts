@@ -10,6 +10,8 @@ export interface EquipoSeleccionado {
 export interface OtrosCargosPayload {
   estructuraId: string | null;
   metodoPrecio: MetodoPrecio;
+  metodoPago: string;
+  observaciones: string;
   incluirIva: boolean;
   tipoMoneda: TipoMoneda;
   valorDolar: number;

@@ -40,6 +40,9 @@ interface Paso3EquipoProps {
 
   onAnterior: () => void;
   onSiguiente: () => void;
+  /** Guarda como borrador sin salir del paso. */
+  onGuardar?: () => void;
+  guardando?: boolean;
 }
 
 const ETIQUETAS_PERFIL: Record<PerfilPaquete, string> = {
@@ -259,6 +262,8 @@ export default function Paso3Equipo({
   recomendacionEquipo,
   onAnterior,
   onSiguiente,
+  onGuardar,
+  guardando = false,
 }: Paso3EquipoProps) {
   const handleElegirPaquete = (paquete: PaqueteRecomendado) => {
     setPanelKey(paquete.panel.clave);
@@ -452,10 +457,18 @@ export default function Paso3Equipo({
         </button>
         <button
           type="button"
+          onClick={onGuardar}
+          disabled={guardando}
+          className="border border-[#00388d] text-[#00388d] px-6 py-3 rounded-full text-sm font-bold hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button
+          type="button"
           onClick={onSiguiente}
           className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"
         >
-          Guardar y continuar a Otros cargos
+          Continuar a Otros cargos
         </button>
       </div>
     </form>

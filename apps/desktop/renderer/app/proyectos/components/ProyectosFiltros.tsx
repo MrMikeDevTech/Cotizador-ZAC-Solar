@@ -40,10 +40,7 @@ export function ProyectosFiltros({
           {cargando && <Icono icon={Loader2} size={14} className="text-gray-400 animate-spin" />}
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          <button className="border border-[#00388d] text-[#00388d] hover:bg-blue-50 px-5 py-2 rounded-full text-xs font-semibold transition-colors">
-            Cotización Rápida
-          </button>
+        <div className="flex items-center w-full sm:w-auto justify-end">
           <Link
             href="/proyectos/nuevo"
             className="bg-[#00388d] hover:bg-blue-900 text-white px-5 py-2 rounded-full text-xs font-semibold transition-colors shadow-md"

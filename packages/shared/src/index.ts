@@ -59,6 +59,20 @@ export type {
   ResultadoRecomendacion,
 } from './calculos/recomendacion.ts';
 
+export type {
+  LineaCotizacionPdf,
+  EmpresaPdf,
+  DatosCotizacionPdf,
+} from './types/cotizacionPdf.ts';
+
+export { construirCotizacionPdf } from './calculos/cotizacionPdf.ts';
+export type {
+  EntradaCotizacionPdf,
+  ProyectoCotizable,
+  ContactoCotizable,
+  CotizacionCotizable,
+} from './calculos/cotizacionPdf.ts';
+
 export * from './seed/catalogosIniciales.ts';
 
 export * from './schemas/contacto.ts';

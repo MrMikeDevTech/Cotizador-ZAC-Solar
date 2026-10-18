@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Cotización</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@400;500;600&family=Oswald:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --azul-header: #3fa9f5;
+    --azul-celda: #cfe8fb;
+    --azul-borde: #6f8fe8;
+    --azul-total: #2e74b5;
+    --azul-total-borde: #1f4e8c;
+    --texto: #1a1a1a;
+    --borde-tabla: #b9c7d8;
+  }
+
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: var(--texto);
+    font-family: "Inter", Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .hoja {
+    position: relative;
+    width: 8.5in;
+    height: 11in;
+    margin: 0 auto;
+    padding: 0.45in 0.5in 0.5in;
+    overflow: hidden;
+  }
+
+  /* Logo grande y tenue al fondo */
+  .marca-agua {
+    position: absolute;
+    left: 50%;
+    top: 1.6in;
+    transform: translateX(-50%);
+    width: 8in;
+    opacity: 0.1;
+    z-index: 0;
+    pointer-events: none;
+  }
+  .contenido { position: relative; z-index: 1; }
+
+  /* Encabezado */
+  .encabezado {
+    display: grid;
+    grid-template-columns: 1fr 2.2in;
+    gap: 0.15in;
+    align-items: start;
+  }
+  h1 {
+    font-family: "Playfair Display", Georgia, "Times New Roman", serif;
+    font-weight: 400;
+    font-size: 21pt;
+    margin: 0.05in 0 8px 0.1in;
+    letter-spacing: 0.2px;
+  }
+  .logo {
+    width: 100%;
+    max-height: 2in;
+    object-fit: contain;
+    margin-top: -0.1in;
+  }
+
+  /* Datos del cliente */
+  .datos {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+    background: rgba(255,255,255,0.9);
+  }
+  .datos td {
+    border: 2px solid var(--azul-borde);
+    padding: 4px 8px;
+    height: 26px;
+  }
+  .datos td.etiqueta {
+    width: 45%;
+    background: var(--azul-celda);
+    font-weight: 600;
+  }
+  .datos td.etiqueta::before { content: "•"; margin-right: 8px; }
+  .datos td.valor { text-align: center; }
+
+  .intro {
+    margin: 14px 0 12px;
+    font-size: 11pt;
+    line-height: 1.3;
+  }
+
+  /* Conceptos */
+  .conceptos {
+    width: 86%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+    background: rgba(255,255,255,0.85);
+  }
+  .conceptos thead th {
+    background: var(--azul-header);
+    color: #111;
+    font-weight: 600;
+    font-size: 8.5pt;
+    text-transform: uppercase;
+    height: 52px;
+    border: 1px solid var(--borde-tabla);
+  }
+  .conceptos td {
+    border: 1px solid var(--borde-tabla);
+    padding: 6px;
+    height: 56px;
+    vertical-align: middle;
+  }
+  .conceptos .col-desc { text-align: left; }
+  .conceptos th.col-desc { text-align: center; }
+  .conceptos .col-cant { width: 13%; text-align: center; }
+  .conceptos .col-precio { width: 16%; text-align: center; }
+
+  /* Observaciones + total */
+  .pie-tabla {
+    width: 86%;
+    display: grid;
+    grid-template-columns: 1fr 13% 16%;
+    align-items: start;
+    margin-top: 6px;
+  }
+  .observaciones h3 {
+    font-family: "Oswald", "Arial Narrow", sans-serif;
+    font-size: 10pt;
+    text-transform: uppercase;
+    margin: 0;
+    letter-spacing: 0.3px;
+  }
+  .observaciones ul {
+    margin: 0;
+    padding-left: 12px;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+  .total-etiqueta, .total-valor {
+    background: var(--azul-total);
+    color: #fff;
+    border: 2px solid var(--azul-total-borde);
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10pt;
+  }
+
+  /* Firma */
+  .firma {
+    margin: 0.55in auto 0;
+    width: 3.6in;
+    text-align: center;
+    font-size: 11pt;
+    line-height: 1.35;
+  }
+  .firma .linea {
+    border-top: 3px solid #222;
+    width: 2.8in;
+    margin: 0 auto 6px;
+  }
+  .firma .nombre { text-transform: uppercase; }
+
+  /* Resaltado de marcadores en la vista de plantilla */
+  .marcador {
+    font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    font-size: 0.9em;
+    color: #b42318;
+    background: #fff3cd;
+    border-radius: 3px;
+    padding: 0 3px;
+    text-transform: none;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- ===================== PLANTILLA ===================== -->
+<script type="text/template" id="plantilla">
+<div class="hoja">
+  <img class="marca-agua" data-logo src="https://cdn.discordapp.com/attachments/687160380098740351/1560905953661165608/logo.png?ex=6ad46a73&amp;is=6ad318f3&amp;hm=c132b07de6ef227ea77687e05b68e249fc9f0e941cc7a3365ac94952e53225d5&amp;" alt="">
+
+  <div class="contenido">
+    <div class="encabezado">
+      <div>
+        <h1>{{titulo}}</h1>
+        <table class="datos">
+          <tr><td class="etiqueta">Fecha</td><td class="valor">{{fecha}}</td></tr>
+          <tr><td class="etiqueta">Cliente</td><td class="valor">{{cliente}}</td></tr>
+          <tr><td class="etiqueta">Ubicación del proyecto</td><td class="valor">{{ubicacion}}</td></tr>
+          <tr><td class="etiqueta">Teléfono</td><td class="valor">{{telefono}}</td></tr>
+          <tr><td class="etiqueta">Método de pago</td><td class="valor">{{metodoPago}}</td></tr>
+        </table>
+      </div>
+      <img class="logo" data-logo src="https://cdn.discordapp.com/attachments/687160380098740351/1560905953661165608/logo.png?ex=6ad46a73&amp;is=6ad318f3&amp;hm=c132b07de6ef227ea77687e05b68e249fc9f0e941cc7a3365ac94952e53225d5&amp;" alt="Logo">
+    </div>
+
+    <p class="intro">{{intro}}</p>
+
+    <table class="conceptos">
+      <thead>
+        <tr>
+          <th class="col-desc">Descripción</th>
+          <th class="col-cant">Cantidad</th>
+          <th class="col-precio">Precio (MXN)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{#each conceptos}}
+        <tr>
+          <td class="col-desc">{{descripcion}}</td>
+          <td class="col-cant">{{cantidad}}</td>
+          <td class="col-precio">{{precio}}</td>
+        </tr>
+        {{/each}}
+      </tbody>
+    </table>
+
+    <div class="pie-tabla">
+      <div class="observaciones">
+        <h3>Observaciones</h3>
+        <ul>
+          {{#each observaciones}}<li>{{this}}</li>{{/each}}
+        </ul>
+      </div>
+      <div class="total-etiqueta">TOTAL</div>
+      <div class="total-valor">{{total}}</div>
+    </div>
+
+    <div class="firma">
+      <div class="linea"></div>
+      <div class="nombre">{{firmaNombre}}</div>
+      <div>{{firmaPuesto}}</div>
+    </div>
+  </div>
+</div>
+</script>
+
+<script>
+  // ===================== DATOS =====================
+  // Las llaves de este objeto son los nombres de los marcadores de la plantilla.
+  // Para otro ticket define window.COTIZACION antes de este script,
+  // o llama renderCotizacion(datos) desde Puppeteer/Playwright.
+  const DATOS_EJEMPLO = {
+    titulo: "Cotización Sistema Fotovoltaico Aislado.",
+    fecha: "28/Agosto/2026",
+    cliente: "A QUIEN CORRESPONDA",
+    ubicacion: "Chacala, Nayarit",
+    telefono: "***",
+    metodoPago: "Contado",
+    intro: "En atención a su interés de adquirir un sistema fotovoltaico aislado y derivado de un estudio técnico ponemos a su disposición la cotización para el suministro e instalación de un sistema de: 9.92kwp con capacidad nominal aproximada de 35kwh.",
+    // descripcion acepta **texto** para negritas; precio como número se formatea a MXN
+    conceptos: [
+      { descripcion: "Panel marca **Jinko Bifacial 620W.**", cantidad: 16, precio: 70400 },
+      { descripcion: "Inversor marca **GROWATT SPE 12000 US**", cantidad: 1, precio: 34999 },
+      { descripcion: "Batería marca **GROWATT AXE 5.0**", cantidad: 7, precio: 224133 },
+      { descripcion: "Pedestal y cable para batería AXE 5.0", cantidad: 1, precio: 3071 },
+      { descripcion: "Material eléctrico, incluye protecciones en AC, DC y tablero de distribución de cargas.", cantidad: 1, precio: 17120 },
+      { descripcion: "Estructura para soporte de aluminio anodizado, incluye sistema de anclaje y tornillería de acero inoxidable.", cantidad: 1, precio: 16960 },
+      { descripcion: "Mano de obra", cantidad: 1, precio: 16000 }
+    ],
+    observaciones: [
+      "Tiempo estimado de instalación 15 días.",
+      "Cotización vigente los próximos 20 días."
+    ],
+    // total es opcional: si no viene, se suman los precios
+    firmaNombre: "Miguel Angel Espinoza Martinez",
+    firmaPuesto: "Gerente en área Comercial."
+  };
+
+  // ===================== MOTOR DE PLANTILLA =====================
+  // Soporta campo, each lista ... /each y this dentro de listas (entre llaves dobles).
+  const CAMPOS_DINERO = ["precio", "total"];
+  const mxn = new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", maximumFractionDigits: 0 });
+
+  function escapar(texto) {
+    return String(texto ?? "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  function formatear(campo, valor) {
+    if (valor === undefined || valor === null) return "";
+    if (CAMPOS_DINERO.includes(campo) && typeof valor === "number") return mxn.format(valor);
+    let html = escapar(valor);
+    if (campo === "descripcion") html = html.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+    return html;
+  }
+
+  function aplicar(plantilla, datos) {
+    plantilla = plantilla.replace(
+      /\{\{#each\s+(\w+)\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/g,
+      (_, lista, interior) => (datos[lista] || []).map(item =>
+        aplicar(interior, typeof item === "object" ? { ...datos, ...item } : { ...datos, this: item })
+      ).join("")
+    );
+    return plantilla.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, campo) => formatear(campo, datos[campo]));
+  }
+
+  function renderCotizacion(datos) {
+    const d = { ...DATOS_EJEMPLO, ...datos };
+    if (d.total === undefined) {
+      d.total = (d.conceptos || []).reduce((s, c) => s + (typeof c.precio === "number" ? c.precio : 0), 0);
+    }
+    document.body.dataset.ready = "0";
+    document.title = d.titulo || "Cotización";
+
+    const app = document.getElementById("app");
+    app.innerHTML = aplicar(document.getElementById("plantilla").textContent, d);
+
+    // Espera logo y fuentes; luego marca body[data-ready="1"] para generar el PDF
+    const cargas = [...app.querySelectorAll("[data-logo]")].map(img => new Promise(listo => {
+      if (img.complete) return listo();
+      img.onload = () => listo();
+      img.onerror = () => { img.style.display = "none"; listo(); };
+    }));
+    return Promise.all([...cargas, document.fonts.ready])
+      .then(() => { document.body.dataset.ready = "1"; });
+  }
+
+  // Vista de plantilla: muestra los marcadores sin rellenar (una fila por lista)
+  function mostrarMarcadores() {
+    let html = document.getElementById("plantilla").textContent
+      .replace(/\{\{#each\s+\w+\s*\}\}([\s\S]*?)\{\{\/each\s*\}\}/g, "$1")
+      .replace(/(\{\{\s*\w+\s*\}\})/g, '<span class="marcador">$1</span>');
+    document.getElementById("app").innerHTML = html;
+    document.querySelectorAll("#app [data-logo]").forEach(img => {
+      img.onerror = () => { img.style.display = "none"; };
+    });
+    document.body.dataset.ready = "1";
+  }
+
+  window.renderCotizacion = renderCotizacion;
+  window.mostrarMarcadores = mostrarMarcadores;
+
+  // Sin datos -> vista de marcadores. Con window.COTIZACION -> ticket real.
+  // Agrega ?ejemplo a la URL para ver el ticket con los datos de ejemplo.
+  if (window.COTIZACION) renderCotizacion(window.COTIZACION);
+  else if (new URLSearchParams(location.search).has("ejemplo")) renderCotizacion({});
+  else mostrarMarcadores();
+</script>
+</body>
+</html>

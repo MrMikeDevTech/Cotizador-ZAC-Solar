@@ -54,6 +54,8 @@ export const otrosCargosSchema = z.object({
   ocultarDesglose: z.boolean().default(false),
   descuento5: z.boolean().default(false),
   descuento10: z.boolean().default(false),
+  metodoPago: z.string().default('Contado'),
+  observaciones: z.string().default(''),
   cargosEditables: z.array(cargoEditableSchema).default([]),
   conceptos: z.array(conceptoCotizacionSchema).default([]),
 });

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import Card from '../../proyectos/nuevo/components/confirmacion/Card';
-import { api } from '../../../lib/api';
+import { ApiError, api } from '../../../lib/api';
 
 interface Concepto {
   id: string;
@@ -25,9 +25,57 @@ interface Empresa {
   localidad: string;
   email: string;
   descripcion: string;
+  tituloCotizacion: string;
+  introPlantilla: string;
+  observaciones: string;
+  firmaNombre: string;
+  firmaPuesto: string;
 }
 
-const EMPRESA_VACIA: Empresa = { nombre: '', telefono: '', localidad: '', email: '', descripcion: '' };
+const EMPRESA_VACIA: Empresa = {
+  nombre: '',
+  telefono: '',
+  localidad: '',
+  email: '',
+  descripcion: '',
+  tituloCotizacion: '',
+  introPlantilla: '',
+  observaciones: '',
+  firmaNombre: '',
+  firmaPuesto: '',
+};
+
+/**
+ * Recorta la fila de la API a los campos que este formulario edita. La API
+ * devuelve la fila completa de Prisma (`id`, `createdAt`, `logoPath`, `rfc`
+ * posiblemente null); reenviarla al guardar es lo que rompía el PUT.
+ */
+function soloCamposDelFormulario(fila: Partial<Empresa>): Empresa {
+  return {
+    nombre: fila.nombre ?? '',
+    telefono: fila.telefono ?? '',
+    localidad: fila.localidad ?? '',
+    email: fila.email ?? '',
+    descripcion: fila.descripcion ?? '',
+    tituloCotizacion: fila.tituloCotizacion ?? '',
+    introPlantilla: fila.introPlantilla ?? '',
+    observaciones: fila.observaciones ?? '',
+    firmaNombre: fila.firmaNombre ?? '',
+    firmaPuesto: fila.firmaPuesto ?? '',
+  };
+}
+
+/** Traduce el error del backend a algo accionable, nombrando el campo. */
+function describirFalloAlGuardar(error: unknown): string {
+  if (!(error instanceof ApiError)) return 'No se pudo guardar los datos de la empresa.';
+  if (error.codigo !== 'VALIDACION') return error.message || 'No se pudo guardar los datos de la empresa.';
+
+  const primera = Array.isArray(error.detalles) ? (error.detalles[0] as { path?: unknown[] }) : null;
+  const campo = primera?.path?.[0];
+  return campo
+    ? `El campo "${String(campo)}" no es válido; revísalo y vuelve a guardar.`
+    : 'Algún dato no es válido; revísalo y vuelve a guardar.';
+}
 
 export default function ConfigCotizacion() {
   const [conceptos, setConceptos] = useState<Concepto[]>([]);
@@ -36,7 +84,6 @@ export default function ConfigCotizacion() {
   const [cargando, setCargando] = useState(true);
   const [guardandoFactores, setGuardandoFactores] = useState(false);
   const [guardandoEmpresa, setGuardandoEmpresa] = useState(false);
-  const [mensaje, setMensaje] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -44,7 +91,11 @@ export default function ConfigCotizacion() {
       .then((datos) => {
         setConceptos(datos.conceptos);
         setFactores(datos.factores);
-        setEmpresa(datos.empresa ?? EMPRESA_VACIA);
+        // Sólo los campos del formulario. La fila que devuelve la API trae
+        // además `id`, `createdAt`, `logoPath` y un `rfc` que puede ser null;
+        // guardarla entera en el estado hacía que el PUT los reenviara y el
+        // validador rechazara el guardado completo.
+        setEmpresa(datos.empresa ? soloCamposDelFormulario(datos.empresa) : EMPRESA_VACIA);
       })
       .catch(() => {
         toast.error('No se pudo conectar con el backend local.');
@@ -52,14 +103,37 @@ export default function ConfigCotizacion() {
       .finally(() => setCargando(false));
   }, []);
 
+  /**
+   * Guarda la empresa. Las dos primeras tarjetas editan **un mismo registro**
+   * (`Empresa`, el singleton `id: '1'`), así que cualquiera de sus botones
+   * guarda todo: no son secciones independientes aunque lo parezcan.
+   *
+   * La validación del nombre se repite aquí a propósito. El backend ya la
+   * exige (`empresaSchema.nombre.min(1)`) pero responde con un genérico
+   * "Datos inválidos", que llegaba al usuario como "no se pudo guardar" sin
+   * decir qué faltaba: con la empresa todavía sin configurar, escribir sólo
+   * el título del PDF y pulsar Guardar fallaba sin forma de saber por qué.
+   * El nombre no puede volverse opcional —es lo que distingue "empresa
+   * configurada" de "sin configurar", y de eso depende que la cotización
+   * salga sin encabezado inventado—, así que lo que faltaba era decirlo.
+   */
   const guardarEmpresa = async () => {
+    if (empresa.nombre.trim() === '') {
+      toast.error('Escribe el nombre de la empresa: es lo único obligatorio para poder guardar.');
+      document.getElementById('empresa-nombre')?.focus();
+      return;
+    }
+
     setGuardandoEmpresa(true);
     try {
       const actualizada = await api.put<Empresa>('/api/config/empresa', empresa);
-      setEmpresa(actualizada);
+      setEmpresa(soloCamposDelFormulario(actualizada));
       toast.success('Datos de la empresa guardados.');
-    } catch {
-      toast.error('No se pudo guardar los datos de la empresa.');
+    } catch (error) {
+      // Se nombra el campo que el validador rechazó. El mensaje genérico
+      // "no se pudo guardar" dejaba al usuario sin nada que corregir: el
+      // fallo real podía estar en un campo que ni siquiera había tocado.
+      toast.error(describirFalloAlGuardar(error));
     } finally {
       setGuardandoEmpresa(false);
     }
@@ -130,72 +204,158 @@ export default function ConfigCotizacion() {
     <div className="min-h-screen bg-[#8e94f2] p-4 md:p-8 font-sans text-gray-800 flex justify-center">
       <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl p-6 md:p-10 relative h-max space-y-6">
         <h2 className="text-2xl font-bold text-[#00388d]">Formato de cotización</h2>
+        <p className="text-sm text-gray-500 -mt-4">
+          Define cómo se ve el PDF que recibe el cliente: quién lo emite, con qué texto y con qué
+          precios arranca cada cotización nueva. Se configura una vez y aplica a todos los proyectos.
+        </p>
 
         <Card title="Datos de la empresa">
-          {cargando ? (
-            <p className="text-sm text-gray-400">Cargando…</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Nombre</label>
-                  <input
-                    type="text"
-                    value={empresa.nombre}
-                    onChange={(e) => setEmpresa({ ...empresa, nombre: e.target.value })}
-                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Teléfono</label>
-                  <input
-                    type="text"
-                    value={empresa.telefono}
-                    onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })}
-                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Localidad</label>
-                  <input
-                    type="text"
-                    value={empresa.localidad}
-                    onChange={(e) => setEmpresa({ ...empresa, localidad: e.target.value })}
-                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Correo electrónico</label>
-                  <input
-                    type="email"
-                    value={empresa.email}
-                    onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })}
-                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1">Descripción</label>
-                  <textarea
-                    rows={3}
-                    value={empresa.descripcion}
-                    onChange={(e) => setEmpresa({ ...empresa, descripcion: e.target.value })}
-                    className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d] resize-y"
-                  />
-                </div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label htmlFor="empresa-nombre" className="block text-xs text-gray-400 mb-1">
+                Nombre <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="empresa-nombre"
+                type="text"
+                required
+                value={empresa.nombre}
+                onChange={(e) => setEmpresa({ ...empresa, nombre: e.target.value })}
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Obligatorio. Mientras esté vacío no se guarda nada, y las cotizaciones salen sin
+                encabezado de empresa.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Teléfono</label>
+              <input
+                type="text"
+                value={empresa.telefono}
+                onChange={(e) => setEmpresa({ ...empresa, telefono: e.target.value })}
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Localidad</label>
+              <input
+                type="text"
+                value={empresa.localidad}
+                onChange={(e) => setEmpresa({ ...empresa, localidad: e.target.value })}
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Correo electrónico</label>
+              <input
+                type="email"
+                value={empresa.email}
+                onChange={(e) => setEmpresa({ ...empresa, email: e.target.value })}
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs text-gray-400 mb-1">Descripción</label>
+              <textarea
+                rows={3}
+                value={empresa.descripcion}
+                onChange={(e) => setEmpresa({ ...empresa, descripcion: e.target.value })}
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d] resize-y"
+              />
+            </div>
+          </div>
 
-              <div className="flex items-center justify-end gap-4 pt-8 mt-6 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={guardarEmpresa}
-                  disabled={guardandoEmpresa}
-                  className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {guardandoEmpresa ? 'Guardando…' : 'Guardar'}
-                </button>
+          <div className="flex items-center justify-end gap-4 pt-8 mt-6 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={guardarEmpresa}
+              disabled={guardandoEmpresa}
+              className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {guardandoEmpresa ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </Card>
+
+        <Card title="Formato del PDF de cotización">
+          <div className="space-y-6">
+            <p className="text-xs text-gray-400">
+              Estos campos y los de la tarjeta anterior son el mismo registro: cualquiera de los dos
+              botones Guardar los guarda todos.
+            </p>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">Título del documento</label>
+              <input
+                type="text"
+                value={empresa.tituloCotizacion}
+                onChange={(e) => setEmpresa({ ...empresa, tituloCotizacion: e.target.value })}
+                placeholder="Ej: Cotización Sistema Fotovoltaico Interconectado"
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+              />
+              <p className="text-xs text-gray-400 mt-1">Encabezado que aparece arriba en el PDF</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">Párrafo de introducción</label>
+              <textarea
+                rows={4}
+                value={empresa.introPlantilla}
+                onChange={(e) => setEmpresa({ ...empresa, introPlantilla: e.target.value })}
+                placeholder="Ej: En atención a su interés... ponemos a su disposición la cotización para el suministro e instalación de un sistema de {kwp} kWp con una producción aproximada de {kwh} kWh por periodo."
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d] resize-y"
+              />
+              <p className="text-xs text-gray-400 mt-1">Admite los marcadores {'{kwp}'} y {'{kwh}'}, que se sustituyen por el tamaño y la producción del sistema cotizado. Si se deja vacío se usa el texto por defecto.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs text-gray-400 mb-2">Observaciones</label>
+              <textarea
+                rows={3}
+                value={empresa.observaciones}
+                onChange={(e) => setEmpresa({ ...empresa, observaciones: e.target.value })}
+                placeholder="Una por línea. Ej:&#10;Tiempo estimado de instalación 15 días.&#10;Cotización vigente los próximos 20 días."
+                className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d] resize-y"
+              />
+              <p className="text-xs text-gray-400 mt-1">Una por línea. Aparecen al pie del PDF</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Nombre de quien firma</label>
+                <input
+                  type="text"
+                  value={empresa.firmaNombre}
+                  onChange={(e) => setEmpresa({ ...empresa, firmaNombre: e.target.value })}
+                  placeholder="Nombre completo"
+                  className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                />
+                <p className="text-xs text-gray-400 mt-1">Si se deja vacío, firma quien genera la cotización</p>
               </div>
-            </>
-          )}
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Puesto</label>
+                <input
+                  type="text"
+                  value={empresa.firmaPuesto}
+                  onChange={(e) => setEmpresa({ ...empresa, firmaPuesto: e.target.value })}
+                  placeholder="Ej: Gerente en área Comercial"
+                  className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-4 pt-8 mt-6 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={guardarEmpresa}
+                disabled={guardandoEmpresa}
+                className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {guardandoEmpresa ? 'Guardando…' : 'Guardar'}
+              </button>
+            </div>
+          </div>
         </Card>
 
         <Card title="Precios sugeridos y ajustes generales">

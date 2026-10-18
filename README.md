@@ -94,7 +94,7 @@ fuera de la carpeta de instalación — así el instalador/desinstalador nunca l
 bun install                # instala todo el monorepo desde la raíz
 bun run test               # tests de packages/shared (bun) + apps/backend (node)
 
-bun run dev:backend        # API local en http://127.0.0.1:3001 (Hono + Prisma/SQLite)
+bun run dev:backend        # API local en http://127.0.0.1:28914 (Hono + Prisma/SQLite)
 bun run dev:renderer       # next dev en http://localhost:3000
 
 bun run build:renderer     # export estático → apps/desktop/renderer/out
@@ -149,6 +149,40 @@ No necesita saber nada de programación ni inicializar nada:
    /api/auth/primer-admin` responde `409 YA_INICIALIZADO` si ya existe algún
    usuario. Las demás cuentas se crean desde el CRM.
 
+## PDFs
+
+"Descargar cotización" siempre acaba en un archivo guardado, nunca en el
+diálogo de impresión. El render lo hace **el servidor**, porque un navegador no
+puede producir un PDF por su cuenta: lo único que ofrece es `window.print()`,
+que obliga al usuario a elegir "Guardar como PDF" a mano.
+
+Quién renderiza depende del entorno, y en ningún caso hace falta una
+dependencia nueva:
+
+- **App instalada (Electron)**: el Chromium que Electron ya trae.
+  `electron/main.ts` inyecta `renderizarUrlAPdf` al crear la app del backend
+  (`crearApp(prisma, { pdf })`), así que `GET /api/documentos/pdf/:tipo/:id`
+  funciona offline. Los botones del escritorio siguen pasando por el canal IPC
+  `generar-pdf`, que usa el mismo renderizador y además pregunta dónde guardar.
+- **Desarrollo (`dev:backend` + `dev:renderer`)**: el Chromium del sistema en
+  modo headless (`chromium`, `google-chrome`, `brave`…, o `CHROMIUM_BIN` con la
+  ruta). Si no hay ninguno, el endpoint responde 503 con el mensaje de qué
+  instalar en vez de fallar en silencio. El renderer se asume en
+  `http://localhost:3000`; se cambia con `RENDERER_URL`.
+
+El render carga `/documentos/imprimir/`, que es una página normal del renderer
+y pide sus datos a la API como cualquier otra. En un navegador headless no hay
+`localStorage` que compartir, así que el endpoint mintea una **sesión de 60
+segundos**, la pasa en la URL (`&render=<token>`) y la revoca al terminar,
+incluso si el render falla. Es una sesión de verdad —misma tabla, mismo hash,
+misma validación—, así que no hay un camino de autenticación paralelo que
+mantener.
+
+Para revisar el documento sin generar un PDF, basta abrir
+`/documentos/imprimir/?tipo=cotizacion&proyectoId=<id>` con la sesión abierta:
+la vista previa de impresión del navegador respeta `@page` y los cortes de
+página igual que el PDF final.
+
 ## Recuperar acceso de administrador
 
 La app siempre mantiene al menos un administrador activo: no se puede
@@ -180,7 +214,7 @@ app. Nada de esto se expone por HTTP.
 
 ## Dev con Electron + Next con HMR
 
-1. `bun run dev:backend` (API en <http://127.0.0.1:3001>)
+1. `bun run dev:backend` (API en <http://127.0.0.1:28914>)
 2. `bun run dev:renderer` (Next en <http://localhost:3000>)
 3. En otra terminal: `ELECTRON_RENDERER_URL="http://localhost:3000" bun run start`
 

@@ -125,6 +125,8 @@ export default function NuevoProyecto() {
   // --- ESTADOS PASO 4: OTROS CARGOS & COTIZACIÓN ---
   const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>(null);
   const [metodoPrecio, setMetodoPrecio] = useState<MetodoPrecio>('unitario');
+  const [metodoPago, setMetodoPago] = useState<string>('Contado');
+  const [observaciones, setObservaciones] = useState<string>('');
   const [opcionesAvanzadas, setOpcionesAvanzadas] = useState<boolean>(false);
   const [incluirIva, setIncluirIva] = useState<boolean>(false);
   const [tipoMoneda, setTipoMoneda] = useState<TipoMoneda>('MXN');
@@ -268,6 +270,8 @@ export default function NuevoProyecto() {
     cantInversores,
     estructuraSeleccionadaId,
     metodoPrecio,
+    metodoPago,
+    observaciones,
     incluirIva,
     tipoMoneda,
     valorDolar,
@@ -368,6 +372,8 @@ export default function NuevoProyecto() {
           setCantInversores(cotizacion.cantInversores);
           setEstructuraSeleccionadaId(cotizacion.estructuraId);
           setMetodoPrecio(cotizacion.metodoPrecio);
+          setMetodoPago(cotizacion.metodoPago ?? 'Contado');
+          setObservaciones(cotizacion.observaciones ?? '');
           setIncluirIva(cotizacion.incluirIva);
           setTipoMoneda(cotizacion.tipoMoneda);
           setValorDolar(cotizacion.valorDolar);
@@ -411,6 +417,8 @@ export default function NuevoProyecto() {
             datosContacto={datosContacto}
             onActualizarDatos={handleActualizarDatosContacto}
             onSiguiente={() => setPasoActivo(2)}
+            onGuardar={handleGuardarBorrador}
+            guardando={guardando}
           />
         )}
 
@@ -455,6 +463,8 @@ export default function NuevoProyecto() {
             pagoMinimoCfe={factores.pagoMinimoCfe}
             onAnterior={() => setPasoActivo(1)}
             onSiguiente={() => setPasoActivo(3)}
+            onGuardar={handleGuardarBorrador}
+            guardando={guardando}
           />
         )}
 
@@ -483,6 +493,8 @@ export default function NuevoProyecto() {
             recomendacionEquipo={recomendacionEquipo}
             onAnterior={() => setPasoActivo(2)}
             onSiguiente={() => setPasoActivo(4)}
+            onGuardar={handleGuardarBorrador}
+            guardando={guardando}
           />
         )}
 
@@ -494,6 +506,10 @@ export default function NuevoProyecto() {
             setEstructuraSeleccionadaId={setEstructuraSeleccionadaId}
             metodoPrecio={metodoPrecio}
             setMetodoPrecio={setMetodoPrecio}
+            metodoPago={metodoPago}
+            setMetodoPago={setMetodoPago}
+            observaciones={observaciones}
+            setObservaciones={setObservaciones}
             opcionesAvanzadas={opcionesAvanzadas}
             setOpcionesAvanzadas={setOpcionesAvanzadas}
             incluirIva={incluirIva}
@@ -514,6 +530,8 @@ export default function NuevoProyecto() {
             setConceptos={setConceptos}
             onAnterior={() => setPasoActivo(3)}
             onSiguiente={() => setPasoActivo(5)}
+            onGuardar={handleGuardarBorrador}
+            guardando={guardando}
           />
         )}
 

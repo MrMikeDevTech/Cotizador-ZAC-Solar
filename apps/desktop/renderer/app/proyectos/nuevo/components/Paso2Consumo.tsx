@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Info, Loader2, TriangleAlert } from 'lucide-react';
 import { calcularPagoRecibo } from '@cotizador/shared';
 import type { EscalonTarifa } from '@cotizador/shared';
@@ -8,6 +8,7 @@ import { ConsumoPeriodo } from '../types';
 import { tarifasClasicas, tarifasNuevas, opcionesHilos } from '../constants';
 import GraficaConsumo from './charts/GraficaConsumo';
 import { Icono } from '../../../components/Icono';
+import { useConfiguracion } from '../../../../lib/ConfiguracionContext';
 
 interface Paso2ConsumoProps {
   nombreProyecto?: string;
@@ -58,6 +59,9 @@ interface Paso2ConsumoProps {
 
   onAnterior: () => void;
   onSiguiente: () => void;
+  /** Guarda como borrador sin salir del paso. */
+  onGuardar?: () => void;
+  guardando?: boolean;
 }
 
 /** Importe con separador de miles y dos decimales. Cadena vacía se deja vacía. */
@@ -106,7 +110,50 @@ export default function Paso2Consumo({
   tarifasDelPeriodo,
   onAnterior,
   onSiguiente,
+  onGuardar,
+  guardando = false,
 }: Paso2ConsumoProps) {
+
+  // Estado y municipio son dos selectores, pero se siguen guardando como un
+  // solo texto "Estado - Municipio": es el formato que `useTarifasCfe` usa
+  // para resolver la localidad contra el catálogo, y el que ya tienen los
+  // proyectos guardados. Partirlo también en el almacenamiento habría roto
+  // ambas cosas sin ganar nada.
+  const { localidades } = useConfiguracion();
+
+  const estadosDisponibles = useMemo(
+    () => [...new Set(localidades.map((l) => l.estado))].sort((a, b) => a.localeCompare(b, 'es')),
+    [localidades]
+  );
+
+  const [estadoGuardado = '', municipioGuardado = ''] = localidadConsumo.split(' - ');
+  // Si el estado guardado ya no existe en el catálogo (p. ej. se renombró),
+  // se cae al primero disponible en vez de dejar el selector en blanco.
+  const estadoSeleccionado = estadosDisponibles.includes(estadoGuardado)
+    ? estadoGuardado
+    : (estadosDisponibles[0] ?? '');
+
+  const municipiosDelEstado = useMemo(
+    () =>
+      localidades
+        .filter((l) => l.estado === estadoSeleccionado)
+        .map((l) => l.nombre)
+        .sort((a, b) => a.localeCompare(b, 'es')),
+    [localidades, estadoSeleccionado]
+  );
+
+  const municipioSeleccionado = municipiosDelEstado.includes(municipioGuardado)
+    ? municipioGuardado
+    : (municipiosDelEstado[0] ?? '');
+
+  /** Al cambiar de estado se salta a su primer municipio: el anterior no existe ahí. */
+  const cambiarEstado = (estado: string) => {
+    const primero = localidades
+      .filter((l) => l.estado === estado)
+      .map((l) => l.nombre)
+      .sort((a, b) => a.localeCompare(b, 'es'))[0];
+    setLocalidadConsumo?.(primero ? `${estado} - ${primero}` : estado);
+  };
 
   useEffect(() => {
     setTarifaSeleccionada(usarNuevaTarifa ? 'PDBT' : '1A');
@@ -238,16 +285,35 @@ export default function Paso2Consumo({
             <span className="text-xs text-gray-500">Usar nueva tarifa</span>
           </label>
         </div>
-        <div>
-          <label className="block text-xs font-bold text-gray-400 mb-1">Localidad</label>
-          <select
-            value={localidadConsumo}
-            onChange={(e) => setLocalidadConsumo?.(e.target.value)}
-            className="w-full border-b border-gray-300 py-2 text-sm text-gray-700 bg-transparent focus:outline-none focus:border-[#00388d] cursor-pointer"
-          >
-            <option value="Nayarit - Compostela">Nayarit - Compostela</option>
-            <option value="Jalisco - Guadalajara">Jalisco - Guadalajara</option>
-          </select>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">Estado</label>
+            <select
+              value={estadoSeleccionado}
+              onChange={(e) => cambiarEstado(e.target.value)}
+              className="w-full border-b border-gray-300 py-2 text-sm text-gray-700 bg-transparent focus:outline-none focus:border-[#00388d] cursor-pointer"
+            >
+              {estadosDisponibles.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-400 mb-1">Municipio</label>
+            <select
+              value={municipioSeleccionado}
+              onChange={(e) => setLocalidadConsumo?.(`${estadoSeleccionado} - ${e.target.value}`)}
+              className="w-full border-b border-gray-300 py-2 text-sm text-gray-700 bg-transparent focus:outline-none focus:border-[#00388d] cursor-pointer"
+            >
+              {municipiosDelEstado.map((municipio) => (
+                <option key={municipio} value={municipio}>
+                  {municipio}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -524,10 +590,18 @@ export default function Paso2Consumo({
         </button>
         <button
           type="button"
+          onClick={onGuardar}
+          disabled={guardando}
+          className="border border-[#00388d] text-[#00388d] px-6 py-3 rounded-full text-sm font-bold hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button
+          type="button"
           onClick={onSiguiente}
           className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"
         >
-          Guardar y continuar a Equipo
+          Continuar a Equipo
         </button>
       </div>
     </form>

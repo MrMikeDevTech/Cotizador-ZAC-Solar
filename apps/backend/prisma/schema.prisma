@@ -11,6 +11,10 @@ datasource db {
 // CATÁLOGO / CONFIGURACIÓN (hoy hardcodeado en constants/index.ts)
 // ─────────────────────────────────────────────────────────
 
+/// Singleton (`id: "1"`) con la identidad del vendedor y el formato de sus
+/// cotizaciones. No se siembra: hasta que alguien la guarda desde
+/// Configuración → Formato de Cotización, `GET /api/config` devuelve `null` y
+/// el documento omite logo y firma en vez de inventarse una empresa.
 model Empresa {
   id          String   @id @default("1")
   nombre      String
@@ -20,6 +24,19 @@ model Empresa {
   descripcion String   @default("")
   rfc         String?
   logoPath    String?
+
+  // --- Formato del PDF de cotización ---
+  /// Encabezado del documento, p. ej. "Cotización Sistema Fotovoltaico Interconectado".
+  tituloCotizacion String @default("")
+  /// Párrafo introductorio. Admite los marcadores {kwp} y {kwh}, que se
+  /// sustituyen con el tamaño y la producción del sistema cotizado.
+  introPlantilla   String @default("")
+  /// Observaciones al pie, una por línea (vigencia, tiempo de instalación…).
+  observaciones    String @default("")
+  /// Quién firma la cotización. Vacío = no se imprime el bloque de firma.
+  firmaNombre      String @default("")
+  firmaPuesto      String @default("")
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -262,6 +279,13 @@ model Cotizacion {
   kmAuto               Float  @default(0)
 
   // Flags de presentación
+  /// Cómo paga el cliente ("Contado", "Financiado"…). Sale impreso en el PDF.
+  /// Vive en la cotización y no en el proyecto porque es parte de la oferta, y
+  /// las cotizaciones son instantáneas versionadas.
+  metodoPago      String  @default("Contado")
+  /// Observaciones de ESTA cotización, una por línea. Vacío = se imprimen las
+  /// de `Empresa`, que son el valor por defecto configurable.
+  observaciones   String  @default("")
   metodoPrecio    String  @default("unitario")
   tipoMoneda      String  @default("MXN")
   valorDolar      Float   @default(16.9)

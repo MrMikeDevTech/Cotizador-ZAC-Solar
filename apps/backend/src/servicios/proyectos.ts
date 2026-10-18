@@ -13,13 +13,61 @@ import { NoEncontradoError, ErrorApi } from '../errores.ts';
 
 type Cliente = PrismaClient | Prisma.TransactionClient;
 
-async function resolverContacto(tx: Cliente, payload: GuardarProyectoInput): Promise<string> {
+/** Campos del contacto que captura el Paso 1, sin el `codigo` (que no se recalcula). */
+function camposContacto(datosContacto: GuardarProyectoInput['datosContacto']) {
+  return {
+    nombre: datosContacto.nombre,
+    apellidoPaterno: datosContacto.apellidoPaterno,
+    apellidoMaterno: datosContacto.apellidoMaterno,
+    telefono: datosContacto.telefono,
+    celular: datosContacto.celular,
+    email: datosContacto.email,
+    estado: datosContacto.estado,
+    localidad: datosContacto.localidad,
+    fuenteContacto: datosContacto.fuenteContacto,
+    estatus: datosContacto.estatus,
+    notas: datosContacto.notas,
+    esEmpresa: datosContacto.mostrarEmpresariales,
+    rfc: datosContacto.empresariales.rfc,
+    cargo: datosContacto.empresariales.cargo,
+    razonSocial: datosContacto.empresariales.razonSocial,
+    actividadComercial: datosContacto.empresariales.actividadComercial,
+  };
+}
+
+/**
+ * Devuelve el id del contacto al que pertenece el proyecto, creándolo o
+ * actualizándolo según el caso.
+ *
+ * `contactoIdActual` es la pieza que evita duplicados: al **editar** un
+ * proyecto, el contacto ya existe y hay que escribir encima de él. Sin esto,
+ * cada "Guardar" de los pasos 1 a 4 creaba un contacto nuevo con los mismos
+ * datos y repuntaba el proyecto hacia él, dejando el anterior huérfano en la
+ * lista de Contactos. Sólo se notaba al abrir esa lista y verla llena de
+ * copias del mismo cliente.
+ *
+ * El `codigo` no se recalcula al actualizar: es el identificador visible del
+ * contacto y cambiarlo porque se corrigió un apellido rompería la referencia
+ * que el usuario ya tiene anotada.
+ */
+async function resolverContacto(
+  tx: Cliente,
+  payload: GuardarProyectoInput,
+  contactoIdActual?: string
+): Promise<string> {
   const { datosContacto } = payload;
 
+  // El usuario eligió explícitamente otro contacto del selector del Paso 1:
+  // manda esa elección, incluso si el proyecto ya tenía otro.
   if (datosContacto.contactoExistenteId) {
     const existente = await tx.contacto.findUnique({ where: { id: datosContacto.contactoExistenteId } });
     if (!existente || existente.deletedAt) throw new NoEncontradoError('Contacto');
     return existente.id;
+  }
+
+  if (contactoIdActual) {
+    await tx.contacto.update({ where: { id: contactoIdActual }, data: camposContacto(datosContacto) });
+    return contactoIdActual;
   }
 
   const nombreCompleto = [datosContacto.nombre, datosContacto.apellidoPaterno, datosContacto.apellidoMaterno]
@@ -29,22 +77,7 @@ async function resolverContacto(tx: Cliente, payload: GuardarProyectoInput): Pro
   const contacto = await tx.contacto.create({
     data: {
       codigo: generarCodigoAbreviado(nombreCompleto, String(Date.now()).slice(-6)),
-      nombre: datosContacto.nombre,
-      apellidoPaterno: datosContacto.apellidoPaterno,
-      apellidoMaterno: datosContacto.apellidoMaterno,
-      telefono: datosContacto.telefono,
-      celular: datosContacto.celular,
-      email: datosContacto.email,
-      estado: datosContacto.estado,
-      localidad: datosContacto.localidad,
-      fuenteContacto: datosContacto.fuenteContacto,
-      estatus: datosContacto.estatus,
-      notas: datosContacto.notas,
-      esEmpresa: datosContacto.mostrarEmpresariales,
-      rfc: datosContacto.empresariales.rfc,
-      cargo: datosContacto.empresariales.cargo,
-      razonSocial: datosContacto.empresariales.razonSocial,
-      actividadComercial: datosContacto.empresariales.actividadComercial,
+      ...camposContacto(datosContacto),
     },
   });
 
@@ -128,7 +161,16 @@ export async function guardarProyecto(
   proyectoIdExistente?: string
 ) {
   return prisma.$transaction(async (tx) => {
-    const contactoId = await resolverContacto(tx, payload);
+    // Se lee antes que nada: `resolverContacto` necesita saber a qué contacto
+    // apunta ya el proyecto para actualizarlo en vez de crear uno nuevo.
+    const existente = proyectoIdExistente
+      ? await tx.proyecto.findUnique({ where: { id: proyectoIdExistente } })
+      : null;
+    if (proyectoIdExistente && (!existente || existente.deletedAt)) {
+      throw new NoEncontradoError('Proyecto');
+    }
+
+    const contactoId = await resolverContacto(tx, payload, existente?.contactoId);
     const snapshot = await construirSnapshotCotizacion(tx, payload);
     const fase = await resolverFase(tx, payload.faseSlug);
 
@@ -155,9 +197,6 @@ export async function guardarProyecto(
     let siguienteVersion = 1;
 
     if (proyectoIdExistente) {
-      const existente = await tx.proyecto.findUnique({ where: { id: proyectoIdExistente } });
-      if (!existente || existente.deletedAt) throw new NoEncontradoError('Proyecto');
-
       await tx.proyecto.update({ where: { id: proyectoIdExistente }, data: datosProyecto });
       await tx.consumoPeriodo.deleteMany({ where: { proyectoId: proyectoIdExistente } });
       proyectoId = proyectoIdExistente;
@@ -218,6 +257,8 @@ export async function guardarProyecto(
         arboles: snapshot.ambiental.arboles,
         kmAuto: snapshot.ambiental.kmAuto,
         metodoPrecio: payload.otrosCargos.metodoPrecio,
+        metodoPago: payload.otrosCargos.metodoPago,
+        observaciones: payload.otrosCargos.observaciones,
         tipoMoneda: payload.otrosCargos.tipoMoneda,
         valorDolar: payload.otrosCargos.valorDolar,
         incluirIva: payload.otrosCargos.incluirIva,

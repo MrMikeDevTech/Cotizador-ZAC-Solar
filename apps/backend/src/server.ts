@@ -11,7 +11,14 @@ try {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const dbPath = process.env.DATABASE_URL?.replace(/^file:/, '') ?? join(__dirname, '..', 'dev.db');
-const port = Number(process.env.PORT) || 3001;
+// Puerto poco habitual a propósito: 3000/3001/8080 son los primeros que
+// prueba cualquiera que escanee la máquina, y el backend expone la API con
+// los datos de clientes. Queda por debajo de 32768 para no chocar con el
+// rango efímero del sistema, que es de donde salen los puertos que asigna el
+// SO. Dentro del Electron empaquetado esto no aplica: ahí se usa `port: 0`
+// y el sistema asigna uno distinto en cada arranque.
+const PUERTO_POR_DEFECTO = 28914;
+const port = Number(process.env.PORT) || PUERTO_POR_DEFECTO;
 
 const { ejecutarMigraciones } = await import('./db/migrador.ts');
 const { crearClientePrisma } = await import('./db/cliente.ts');
@@ -22,7 +29,19 @@ ejecutarMigraciones(dbPath);
 const prisma = crearClientePrisma(dbPath);
 await sembrarCatalogos(prisma);
 
-const app = crearApp(prisma);
+const { crearRenderizadorChromium } = await import('./servicios/renderPdf.ts');
+
+// URL donde corre `next dev`. En la app empaquetada esto no se usa: Electron
+// crea la app con su propio renderizador y su propia URL de renderer.
+const RENDERER_DEV_POR_DEFECTO = 'http://localhost:3000';
+const rendererUrl = (process.env.RENDERER_URL || RENDERER_DEV_POR_DEFECTO).replace(/\/$/, '');
+
+const app = crearApp(prisma, {
+  pdf: {
+    renderizar: crearRenderizadorChromium(),
+    rendererBaseUrl: () => rendererUrl,
+  },
+});
 
 /** Horas que debe tener el dato del mes en curso antes de volver a consultar a CFE. */
 const HORAS_FRESCURA_TARIFAS = 24;
