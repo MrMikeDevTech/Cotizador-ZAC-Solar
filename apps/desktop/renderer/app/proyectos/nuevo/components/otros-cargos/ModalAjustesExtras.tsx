@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { aplicarDescuento } from '@cotizador/shared';
 import { Modal } from '../../../../components/Modal';
 import { TipoMoneda } from '../../types';
 
@@ -10,7 +12,10 @@ interface ModalAjustesExtrasProps {
   setDescuento5: (val: boolean) => void;
   descuento10: boolean;
   setDescuento10: (val: boolean) => void;
-  subtotalConDescuento: number;
+  // Subtotal SIN descuento (antes de aplicar 5%/10%). Con esto el modal
+  // puede calcular su propia vista previa a partir del borrador, sin que
+  // el padre necesite reaccionar en vivo a los checkboxes.
+  subtotalSinDescuento: number;
   tipoMoneda: TipoMoneda;
 }
 
@@ -21,32 +26,75 @@ export default function ModalAjustesExtras({
   setDescuento5,
   descuento10,
   setDescuento10,
-  subtotalConDescuento,
+  subtotalSinDescuento,
   tipoMoneda,
 }: ModalAjustesExtrasProps) {
-  const formattedPrecio = `$${subtotalConDescuento.toLocaleString('es-MX', {
+  // Borrador local: los checkboxes solo tocan este estado mientras el modal
+  // está abierto. El padre (descuento5/descuento10) no se entera de nada
+  // hasta que se pulsa "Guardar".
+  const [borradorDescuento5, setBorradorDescuento5] = useState(descuento5);
+  const [borradorDescuento10, setBorradorDescuento10] = useState(descuento10);
+
+  // Resincroniza el borrador cada vez que el modal se abre (no solo al
+  // montar): si el usuario cancela, reabre y el padre cambió por otra vía,
+  // debe ver el valor real del padre, no el descartado.
+  useEffect(() => {
+    if (isOpen) {
+      setBorradorDescuento5(descuento5);
+      setBorradorDescuento10(descuento10);
+    }
+  }, [isOpen, descuento5, descuento10]);
+
+  // La vista previa de "Precio del sistema con descuento" se calcula AQUÍ,
+  // dentro del modal, a partir del borrador — no del estado real del padre.
+  // Si usáramos el subtotal ya descontado del padre, ese número dejaría de
+  // reaccionar a los checkboxes en cuanto los descuentos dejan de aplicarse
+  // en vivo, y el campo quedaría inútil.
+  //
+  // La regla del descuento viene de `@cotizador/shared` y no se replica aquí:
+  // los porcentajes son del motor, y tenerlos duplicados haría que cambiar
+  // uno dejase al modal mostrando una cifra y a la cotización otra.
+  const { subtotalConDescuento: subtotalConDescuentoPreview } = aplicarDescuento(
+    subtotalSinDescuento,
+    borradorDescuento5,
+    borradorDescuento10
+  );
+
+  const formattedPrecio = `$${subtotalConDescuentoPreview.toLocaleString('es-MX', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} ${tipoMoneda}`;
 
+  const handleGuardar = () => {
+    setDescuento5(borradorDescuento5);
+    setDescuento10(borradorDescuento10);
+    onClose();
+  };
+
+  // Cancelar, la X, el backdrop y Escape todos llegan aquí y simplemente
+  // cierran: el borrador se descarta y el padre nunca se tocó.
+  const handleCancelar = () => {
+    onClose();
+  };
+
   return (
     <Modal
       abierto={isOpen}
-      onCerrar={onClose}
+      onCerrar={handleCancelar}
       titulo="Ajustes extras"
       tamano="sm"
       footer={
         <>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancelar}
             className="px-5 py-1.5 border border-gray-300 text-gray-600 rounded-full font-semibold text-xs hover:bg-gray-50 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleGuardar}
             className="px-6 py-1.5 bg-[#00388d] text-white rounded-full font-semibold text-xs shadow hover:bg-blue-900 transition-colors cursor-pointer"
           >
             Guardar
@@ -60,8 +108,8 @@ export default function ModalAjustesExtras({
           <span className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={descuento5}
-              onChange={(e) => setDescuento5(e.target.checked)}
+              checked={borradorDescuento5}
+              onChange={(e) => setBorradorDescuento5(e.target.checked)}
               className="rounded text-[#2dd4bf] focus:ring-[#2dd4bf]"
             />
             Pago en una sola exhibición
@@ -72,8 +120,8 @@ export default function ModalAjustesExtras({
           <span className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={descuento10}
-              onChange={(e) => setDescuento10(e.target.checked)}
+              checked={borradorDescuento10}
+              onChange={(e) => setBorradorDescuento10(e.target.checked)}
               className="rounded text-[#2dd4bf] focus:ring-[#2dd4bf]"
             />
             Pago en una sola exhibición

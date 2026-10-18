@@ -39,21 +39,34 @@ tsconfig.base.json
   [instalador de Visual Studio Build Tools 2022](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022),
   marcando el workload "Desktop development with C++".
 
-- **NixOS**: el CLI de Prisma no encuentra su `schema-engine` (intenta descargar un
-  binario para el target `linux-nixos`, que no existe), así que `prisma generate` y
-  `prisma migrate` fallan y el `postinstall` avisa sin romper la instalación. La
-  solución es usar el binario estático, que no depende de FHS:
+- **NixOS**: el CLI de Prisma resuelve sus engines antes de cualquier comando e
+  intenta descargar el binario del target `linux-nixos`, que no existe (404).
+
+  **`db:generate` ya está resuelto y no hace falta hacer nada.** Lo envuelve
+  `apps/backend/scripts/prisma-generate.mjs`, que detecta NixOS y evita la
+  descarga: `generate` sólo comprueba que la ruta del `schema-engine` exista,
+  nunca lo ejecuta, así que apuntarla a un archivo cualquiera basta. Sin red y
+  sin binarios de 20 MB.
+
+  **`db:migrate` sí lo necesita de verdad** —`prisma migrate` ejecuta el
+  schema-engine— y para eso hay que darle el binario estático, que no depende
+  de FHS:
 
   ```bash
   curl -sL "https://binaries.prisma.sh/all_commits/$(bunx prisma --version \
     | grep -oP 'engine=\K[0-9a-f]+')/linux-static-x64/schema-engine.gz" \
     | gunzip > /tmp/prisma-schema-engine && chmod +x /tmp/prisma-schema-engine
   export PRISMA_SCHEMA_ENGINE_BINARY=/tmp/prisma-schema-engine
-  bun run --filter @cotizador/backend db:generate
+  bun run --filter @cotizador/backend db:migrate
   ```
 
-  Solo afecta al desarrollo: en tiempo de ejecución el backend usa el driver adapter
-  de `better-sqlite3` y no necesita ningún engine de Prisma.
+  (`/tmp` se borra al reiniciar; si creas migraciones a menudo, guárdalo en otro
+  sitio y exporta la variable desde tu perfil.)
+
+  Los avisos `Prisma failed to detect the libssl/openssl version` son ruido
+  inofensivo del CLI en NixOS. Nada de esto afecta a la app: en tiempo de
+  ejecución el backend usa el driver adapter de `better-sqlite3` y no necesita
+  ningún engine de Prisma.
 
 ## Primer arranque
 

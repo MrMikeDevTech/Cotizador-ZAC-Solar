@@ -385,4 +385,73 @@ describe('CFE Rates Routes', () => {
     const period1F = body.periods.find((p: any) => p.tariffCode === '1F');
     assert.equal(period1F.tierCount, 4);
   });
+
+  test('GET /api/cfe-rates?tariff=DAC devuelve cuotas por región desde CfeDacRate', async () => {
+    const now = new Date();
+    await prisma.cfeDacRate.createMany({
+      data: [
+        {
+          year: 2026,
+          month: 7,
+          region: 'Central',
+          cargoFijo: 142.25,
+          precioKwh: 6.529,
+          precioKwhVerano: null,
+          fetchedAt: now,
+        },
+        {
+          year: 2026,
+          month: 7,
+          region: 'Baja California',
+          cargoFijo: 142.25,
+          precioKwh: 5.453,
+          precioKwhVerano: 6.348,
+          fetchedAt: now,
+        },
+      ],
+    });
+
+    const res = await req('/api/cfe-rates?tariff=DAC&year=2026&month=7');
+    assert.equal(res.status, 200);
+    const body: any = await res.json();
+    assert.equal(body.tariffCode, 'DAC');
+    assert.equal(body.year, 2026);
+    assert.equal(body.month, 7);
+    assert.equal(body.regions.length, 2);
+    // Verifica que están ordenados por región (ascendente)
+    assert.equal(body.regions[0]?.region, 'Baja California');
+    assert.equal(body.regions[1]?.region, 'Central');
+    // Verifica que el contenido coincide
+    assert.equal(body.regions[1]?.cargoFijo, 142.25);
+    assert.equal(body.regions[1]?.precioKwh, 6.529);
+    assert.equal(body.regions[1]?.precioKwhVerano, null);
+    assert.equal(body.regions[0]?.precioKwhVerano, 6.348);
+  });
+
+  test('GET /api/cfe-rates?tariff=DAC sin datos devuelve 404', async () => {
+    const res = await req('/api/cfe-rates?tariff=DAC&year=2099&month=12');
+    assert.equal(res.status, 404);
+    const body: any = await res.json();
+    assert.equal(body.error.codigo, 'NO_ENCONTRADO');
+  });
+
+  test('POST /api/cfe-rates/sync responde siempre 200 (offline-first), con ok y resumen', async () => {
+    // Responde siempre 200 sin importar si la sincronización tuvo éxito o no.
+    // Degradación offline: el frontend puede saber si funcionó chequeando ok: true/false.
+    const res = await req('/api/cfe-rates/sync', { method: 'POST' });
+    assert.equal(res.status, 200);
+    const body: any = await res.json();
+    assert.ok(typeof body.ok === 'boolean');
+    // Si ok: true, tiene los campos de resumen. Si ok: false, tiene mensaje.
+    if (body.ok) {
+      assert.ok(typeof body.saved === 'number');
+      assert.ok(typeof body.dacSaved === 'number');
+      assert.ok(typeof body.missing === 'number');
+      assert.ok(typeof body.errors === 'number');
+      assert.ok(typeof body.durationMs === 'number');
+    } else {
+      assert.ok(body.mensaje);
+      assert.ok(typeof body.mensaje === 'string');
+    }
+  });
 });

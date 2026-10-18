@@ -5,6 +5,7 @@
   "description": "Monorepo Cotizador Solar — Electron + Next.js (static export) + Backend + Shared types",
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "latest",
     "node-gyp": "^13.0.2",
     "typescript": "5"
   },

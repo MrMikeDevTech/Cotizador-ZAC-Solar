@@ -8,7 +8,7 @@
     "dev": "node --watch src/server.ts",
     "start": "node src/server.ts",
     "test": "node --test 'src/**/*.test.ts'",
-    "db:generate": "prisma generate",
+    "db:generate": "node scripts/prisma-generate.mjs",
     "db:migrate": "prisma migrate dev",
     "admin:recover": "node scripts/admin-recover.ts"
   },
@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^26.6.5",
     "prisma": "7.10.0",
     "typescript": "5"
   }

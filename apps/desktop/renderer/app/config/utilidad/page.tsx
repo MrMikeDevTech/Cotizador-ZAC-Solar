@@ -34,23 +34,7 @@ interface Localidad {
   regionDac?: string | null;
 }
 
-interface CfeStatus {
-  lastFetchedAt: string | null;
-  totalRows: number;
-  periods: Array<{ tariffCode: string; year: number; month: number; season: string; tierCount: number }>;
-}
 
-interface TariffRates {
-  tariffCode: string;
-  year: number;
-  month: number;
-  seasons: Array<{
-    season: string;
-    tiers: Array<{ tierIndex: number; concept: string; price: number; description: string; limitKwh: number | null }>;
-  }>;
-}
-
-const TARIFAS_CFE = ['1', '1A', '1B', '1C', '1D', '1E', '1F'] as const;
 const REGIONES_DAC = ['Central', 'Noroeste', 'Norte y Noreste', 'Sur y Peninsular', 'Baja California', 'Baja California Sur'] as const;
 
 export default function ConfigUtilidad() {
@@ -59,13 +43,6 @@ export default function ConfigUtilidad() {
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
-
-  const [cfeStatus, setCfeStatus] = useState<CfeStatus | null>(null);
-  const [tarifaCfeSeleccionada, setTarifaCfeSeleccionada] = useState<string>('1');
-  const [anioCfeSeleccionado, setAnioCfeSeleccionado] = useState<number>(2024);
-  const [mesCfeSeleccionado, setMesCfeSeleccionado] = useState<number>(1);
-  const [tarifasRates, setTarifasRates] = useState<TariffRates | null>(null);
-  const [cargandoCfe, setCargandoCfe] = useState(false);
 
   useEffect(() => {
     api
@@ -79,28 +56,7 @@ export default function ConfigUtilidad() {
         toast.error('No se pudo conectar con el backend local.');
       })
       .finally(() => setCargando(false));
-
-    api
-      .get<CfeStatus>('/api/cfe-rates/status')
-      .then((datos) => setCfeStatus(datos))
-      .catch(() => {
-        // Sin conectividad a CFE rates, no es crítico
-      });
   }, []);
-
-  const cargarTarifasCfe = async () => {
-    setCargandoCfe(true);
-    try {
-      const datos = await api.get<TariffRates>(
-        `/api/cfe-rates?tariff=${tarifaCfeSeleccionada}&year=${anioCfeSeleccionado}&month=${mesCfeSeleccionado}`
-      );
-      setTarifasRates(datos);
-    } catch {
-      toast.error('No se pudo cargar las tarifas CFE.');
-    } finally {
-      setCargandoCfe(false);
-    }
-  };
 
   const guardarFactores = async () => {
     if (!factores) return;
@@ -260,102 +216,7 @@ export default function ConfigUtilidad() {
           </div>
         </Card>
 
-        <Card title="Precios de tarifas CFE (sincronización automática)">
-          <div className="space-y-4">
-            <div>
-              <p className="text-xs text-gray-500 mb-3">
-                Última sincronización: {cfeStatus?.lastFetchedAt ? new Date(cfeStatus.lastFetchedAt).toLocaleDateString('es-MX') : 'Nunca'}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Tarifa</label>
-                <select
-                  value={tarifaCfeSeleccionada}
-                  onChange={(e) => setTarifaCfeSeleccionada(e.target.value)}
-                  className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                >
-                  {TARIFAS_CFE.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Año</label>
-                <input
-                  type="number"
-                  value={anioCfeSeleccionado}
-                  onChange={(e) => setAnioCfeSeleccionado(Number(e.target.value))}
-                  className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Mes</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="12"
-                  value={mesCfeSeleccionado}
-                  onChange={(e) => setMesCfeSeleccionado(Number(e.target.value))}
-                  className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-                />
-              </div>
-
-              <div className="flex items-end">
-                <button
-                  type="button"
-                  onClick={cargarTarifasCfe}
-                  disabled={cargandoCfe}
-                  className="w-full bg-[#00388d] text-white px-3 py-2 rounded-full text-xs font-bold hover:bg-blue-900 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {cargandoCfe ? 'Cargando…' : 'Cargar'}
-                </button>
-              </div>
-            </div>
-
-            {tarifasRates && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 max-h-64 overflow-y-auto">
-                <p className="text-xs font-semibold text-gray-700 mb-3">
-                  {tarifasRates.tariffCode} - {tarifasRates.month}/{tarifasRates.year}
-                </p>
-                {tarifasRates.seasons.map((season) => (
-                  <div key={season.season} className="mb-4 last:mb-0">
-                    <p className="text-xs font-semibold text-[#00388d] mb-2">{season.season === 'summer' ? 'Verano' : 'Fuera de Verano'}</p>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-300">
-                          <th className="text-left py-1 px-1">Nivel</th>
-                          <th className="text-left py-1 px-1">Concepto</th>
-                          <th className="text-right py-1 px-1">Precio</th>
-                          {season.tiers[0]?.limitKwh !== null && <th className="text-right py-1 px-1">Límite (kWh)</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {season.tiers.map((tier) => (
-                          <tr key={tier.tierIndex} className="border-b border-gray-100">
-                            <td className="py-1 px-1 text-gray-600">{tier.tierIndex + 1}</td>
-                            <td className="py-1 px-1">{tier.concept}</td>
-                            <td className="text-right py-1 px-1 font-semibold">${tier.price.toFixed(4)}</td>
-                            {season.tiers[0]?.limitKwh !== null && (
-                              <td className="text-right py-1 px-1">{tier.limitKwh ? tier.limitKwh.toFixed(0) : '-'}</td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card title="Límites DAC por tarifa CFE">
+<Card title="Límites DAC por tarifa CFE">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {tarifas.map((tarifa) => (
               <div key={tarifa.id} className="flex items-center justify-between border-b border-gray-50 pb-2">

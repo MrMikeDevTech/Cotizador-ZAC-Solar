@@ -42,8 +42,9 @@ describe('migrador + seed', () => {
     assert.equal(await prisma.tarifa.count(), 10);
     assert.equal(await prisma.localidad.count(), 9);
 
-    const empresa = await prisma.empresa.findUnique({ where: { id: '1' } });
-    assert.equal(empresa?.nombre, 'Energy Sun');
+    // Los catálogos sí se siembran (valores de arranque útiles); la empresa
+    // no, porque es la identidad del usuario y no un valor por defecto.
+    assert.equal(await prisma.empresa.count(), 0);
 
     const factores = await prisma.factoresCalculo.findUnique({ where: { id: '1' } });
     assert.equal(factores?.pagoMinimoCfe, 60);

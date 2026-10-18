@@ -107,13 +107,6 @@ export const CONCEPTOS_COTIZACION_DEFECTO: ConceptoPlantilla[] = [
   { id: '4', concepto: 'Mano de obra', costoBase: 3600, margenPorcentaje: 0, orden: 3, activo: true },
 ];
 
-export const DATOS_EMPRESA_DEFECTO: DatosEmpresa = {
-  nombre: 'Energy Sun',
-  telefono: '322 123 4567',
-  localidad: 'Puerto Vallarta, Jalisco',
-  email: 'contacto@energysun.com',
-  descripcion: 'Descripción de la empresa vendedora y detalles adicionales del distribuidor.',
-};
 
 export const PAGO_MINIMO_CFE = 60;
 

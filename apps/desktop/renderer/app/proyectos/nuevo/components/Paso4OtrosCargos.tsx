@@ -154,7 +154,7 @@ export default function Paso4OtrosCargos({
       }),
     [conceptos, cargosEditables, precioEstructura, descuento5, descuento10, incluirIva, factores.ivaPorcentaje]
   );
-  const { subtotalConDescuento, granTotal, utilidadTotalMXN, porcentajeUtilidadTotal } = totales;
+  const { subtotalGeneral, subtotalConDescuento, granTotal, utilidadTotalMXN, porcentajeUtilidadTotal } = totales;
 
   // --- HANDLERS ---
   const handleToggleEstructura = (id: string) => {
@@ -179,27 +179,6 @@ export default function Paso4OtrosCargos({
         }
         return item;
       })
-    );
-  };
-
-  const handleAgregarCargo = (): void => {
-    setCargosEditables((prev) => [
-      ...prev,
-      { id: Date.now().toString(), nombre: '', monto: 0 },
-    ]);
-  };
-
-  const handleEliminarCargo = (id: string): void => {
-    setCargosEditables((prev) => prev.filter((cargo) => cargo.id !== id));
-  };
-
-  const handleUpdateCargo = (
-    id: string,
-    field: 'nombre' | 'monto',
-    value: string | number
-  ): void => {
-    setCargosEditables((prev) =>
-      prev.map((cargo) => (cargo.id === id ? { ...cargo, [field]: value } : cargo))
     );
   };
 
@@ -315,7 +294,7 @@ export default function Paso4OtrosCargos({
         setDescuento5={setDescuento5}
         descuento10={descuento10}
         setDescuento10={setDescuento10}
-        subtotalConDescuento={subtotalConDescuento}
+        subtotalSinDescuento={subtotalGeneral}
         tipoMoneda={tipoMoneda}
       />
 
@@ -323,9 +302,7 @@ export default function Paso4OtrosCargos({
         isOpen={modalCargosOpen}
         onClose={() => setModalCargosOpen(false)}
         cargosEditables={cargosEditables}
-        onAgregarCargo={handleAgregarCargo}
-        onEliminarCargo={handleEliminarCargo}
-        onUpdateCargo={handleUpdateCargo}
+        setCargosEditables={setCargosEditables}
       />
     </div>
   );

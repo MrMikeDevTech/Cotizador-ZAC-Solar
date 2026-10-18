@@ -6,7 +6,6 @@ import {
   CONCEPTOS_COTIZACION_DEFECTO,
   TARIFAS_INICIALES,
   LOCALIDADES_INICIALES,
-  DATOS_EMPRESA_DEFECTO,
   FACTORES_CALCULO_DEFECTO,
 } from '@cotizador/shared';
 
@@ -16,11 +15,13 @@ import {
  * y una vez que el usuario edita algo desde /config no se sobreescribe.
  */
 export async function sembrarCatalogos(prisma: PrismaClient): Promise<void> {
-  await prisma.empresa.upsert({
-    where: { id: '1' },
-    create: { id: '1', ...DATOS_EMPRESA_DEFECTO },
-    update: {},
-  });
+  // La empresa NO se siembra a propósito. Antes se creaba una ficticia, y el
+  // resultado era que toda cotización salía a nombre de una empresa que el
+  // usuario nunca capturó — en un documento que acaba en manos del cliente.
+  // Sin fila, `GET /api/config` devuelve `empresa: null` y la UI omite el
+  // bloque hasta que se llenen los datos en Configuración → Formato de
+  // Cotización. Los catálogos sí se siembran: son valores de arranque útiles,
+  // no identidad de nadie.
 
   await prisma.factoresCalculo.upsert({
     where: { id: '1' },

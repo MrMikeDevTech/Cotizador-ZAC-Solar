@@ -9,7 +9,6 @@ import {
   inversoresData as inversoresDefecto,
   LISTA_ESTRUCTURAS as estructurasDefecto,
   CONCEPTOS_COTIZACION_DEFECTO as conceptosDefecto,
-  DATOS_EMPRESA_DEFECTO as empresaDefecto,
 } from '../app/proyectos/nuevo/constants';
 import { FACTORES_CALCULO_DEFECTO as factoresDefecto, TARIFAS_INICIALES as tarifasDefecto } from '@cotizador/shared';
 import { api } from './api';
@@ -25,7 +24,12 @@ interface ValorConfiguracion {
   inversores: Record<string, InversorData>;
   estructuras: EstructuraInstalacion[];
   conceptosDefecto: ConceptoCotizacion[];
-  empresa: DatosEmpresa;
+  /**
+   * `null` mientras no se capturen los datos en Configuración → Formato de
+   * Cotización. No se rellena con un ejemplo: una cotización a nombre de una
+   * empresa inventada acaba en manos del cliente.
+   */
+  empresa: DatosEmpresa | null;
   factores: FactoresCalculo;
   tarifas: TarifaConfig[];
   conectado: boolean;
@@ -39,7 +43,7 @@ const ConfiguracionContext = createContext<ValorConfiguracion>({
   inversores: inversoresDefecto,
   estructuras: estructurasDefecto,
   conceptosDefecto,
-  empresa: empresaDefecto,
+  empresa: null,
   factores: factoresDefecto,
   tarifas: tarifasDefecto,
   conectado: false,
@@ -83,7 +87,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
     inversores: inversoresDefecto,
     estructuras: estructurasDefecto,
     conceptosDefecto,
-    empresa: empresaDefecto,
+    empresa: null,
     factores: factoresDefecto,
     tarifas: tarifasDefecto,
     conectado: false,
@@ -123,14 +127,27 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
         }
         versionRef.current = datos.version ?? null;
 
+        // Se conserva `precioUnitario` (y `clave`): sin el precio no se puede
+        // recomendar equipo ni cotizarlo con el catálogo real.
         const paneles: Record<string, PanelData> = {};
         for (const p of datos.paneles) {
-          paneles[p.clave] = { nombre: p.nombre, watts: p.watts, factorBifacial: p.factorBifacial };
+          paneles[p.clave] = {
+            clave: p.clave,
+            nombre: p.nombre,
+            watts: p.watts,
+            factorBifacial: p.factorBifacial,
+            precioUnitario: p.precioUnitario,
+          };
         }
 
         const inversores: Record<string, InversorData> = {};
         for (const inv of datos.inversores) {
-          inversores[inv.clave] = { nombre: inv.nombre, wattsMax: inv.wattsMax };
+          inversores[inv.clave] = {
+            clave: inv.clave,
+            nombre: inv.nombre,
+            wattsMax: inv.wattsMax,
+            precioUnitario: inv.precioUnitario,
+          };
         }
 
         const estructuras: EstructuraInstalacion[] = datos.estructuras.map((e) => ({
@@ -151,7 +168,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
           inversores: Object.keys(inversores).length ? inversores : inversoresDefecto,
           estructuras: estructuras.length ? estructuras : estructurasDefecto,
           conceptosDefecto: conceptosCargados.length ? conceptosCargados : conceptosDefecto,
-          empresa: datos.empresa ?? empresaDefecto,
+          empresa: datos.empresa,
           factores: datos.factores ?? factoresDefecto,
           tarifas: datos.tarifas.length ? datos.tarifas : tarifasDefecto,
           conectado: true,
@@ -166,7 +183,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  /** Refresco visible: lo usa el botón "Actualizar" del Paso 3. */
+  /** Refresco de catálogo: lo usan las subpáginas de configuración tras guardar cambios. */
   const refrescar = useCallback(
     () => cargarConfig({ mostrarCargando: true, ignorarAntirrebote: true }),
     [cargarConfig]

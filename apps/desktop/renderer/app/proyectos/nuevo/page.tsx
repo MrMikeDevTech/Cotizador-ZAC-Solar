@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import {
   Stepper,
   Paso1Contacto,
@@ -18,14 +19,19 @@ import {
   TipoMoneda,
 } from './types';
 import { CONCEPTOS_COTIZACION_DEFECTO } from './constants';
-import { calcularPromedios, calcularDimensionamiento, calcularTotalesCotizacion } from '@cotizador/shared';
+import {
+  calcularPromedios,
+  calcularDimensionamiento,
+  calcularTotalesCotizacion,
+  recomendarPaquetes,
+} from '@cotizador/shared';
 import { useConfiguracion } from '../../../lib/ConfiguracionContext';
 import { api } from '../../../lib/api';
 import { useGuardarProyecto } from './hooks/useGuardarProyecto';
 import { useTarifasCfe } from './hooks/useTarifasCfe';
 
 export default function NuevoProyecto() {
-  const { paneles, inversores, estructuras, factores, tarifas, refrescar: refrescarConfig } = useConfiguracion();
+  const { paneles, inversores, estructuras, factores, tarifas } = useConfiguracion();
 
   // --- CONTROL DE PASO ---
   const [pasoActivo, setPasoActivo] = useState(1);
@@ -63,7 +69,11 @@ export default function NuevoProyecto() {
   const [hilos, setHilos] = useState('1 hilo');
   const [nombreRecibo, setNombreRecibo] = useState('');
   const [numeroServicio, setNumeroServicio] = useState('');
-  const [ivaCFE, setIvaCFE] = useState(16);
+  // 0 por defecto: el suministro eléctrico de uso **doméstico** (tarifas 1,
+  // 1A-1F y DAC) no causa IVA. Con el 16 % que había antes, el pago calculado
+  // salía un 16 % por encima del recibo real. Sigue siendo editable para los
+  // casos en que sí aplique (p. ej. un servicio comercial como PDBT).
+  const [ivaCFE, setIvaCFE] = useState(0);
   const [porcentajeDap, setPorcentajeDap] = useState('');
   const [usarNuevaTarifa, setUsarNuevaTarifa] = useState(false);
   const [tarifaSeleccionada, setTarifaSeleccionada] = useState('1A');
@@ -77,6 +87,10 @@ export default function NuevoProyecto() {
   const [consumos, setConsumos] = useState<ConsumoPeriodo[]>(
     Array.from({ length: 6 }, () => ({ inicioStr: '', terminoStr: '', kwh: '', pago: '' }))
   );
+  // Apagado por defecto: el pago se captura a mano, copiándolo del recibo que
+  // tiene el cliente delante. El cálculo con la tarifa de CFE se activa con el
+  // check cuando se quiera, pero no decide por su cuenta.
+  const [calcularPagoAuto, setCalcularPagoAuto] = useState(false);
 
   // --- ESTADOS PASO 3: EQUIPO ---
   const [panelKey, setPanelKey] = useState('');
@@ -84,33 +98,29 @@ export default function NuevoProyecto() {
   const [inversorKey, setInversorKey] = useState('');
   const [cantInversores, setCantInversores] = useState<number | ''>('');
 
-  const [tamanoSistema, setTamanoSistema] = useState(0);
-  const [produccion, setProduccion] = useState(0);
-  const [autoconsumo, setAutoconsumo] = useState(0);
-  const [nuevoPago, setNuevoPago] = useState(0);
-  const [ahorro, setAhorro] = useState(0);
-
   // Promedios calculados a partir de los consumos del Paso 2
   const { consumoPromedioKwh, pagoPromedioCFE } = useMemo(
     () => calcularPromedios(consumos),
     [consumos]
   );
 
-  // Cálculos reactivos de producción y ahorro para el Paso 3
-  useEffect(() => {
-    const resultado = calcularDimensionamiento({
-      panel: paneles[panelKey],
-      cantPaneles: Number(cantPaneles) || 0,
-      consumoPromedioKwh,
-      pagoPromedioCFE,
-      factores,
-    });
-    setTamanoSistema(resultado.tamanoSistema);
-    setProduccion(resultado.produccion);
-    setAutoconsumo(resultado.autoconsumo);
-    setNuevoPago(resultado.nuevoPago);
-    setAhorro(resultado.ahorro);
-  }, [panelKey, cantPaneles, consumoPromedioKwh, pagoPromedioCFE, paneles, factores]);
+  // Dimensionamiento del Paso 3: valor **derivado**, no estado.
+  //
+  // Antes esto era un `useEffect` que volcaba el resultado en cinco `useState`
+  // distintos. Eso costaba un render extra por cada cambio y, peor, dejaba una
+  // ventana en la que los cinco valores correspondían al consumo anterior: lo
+  // que se mostraba en pantalla iba un render por detrás de lo capturado.
+  const { tamanoSistema, produccion, autoconsumo, nuevoPago, ahorro } = useMemo(
+    () =>
+      calcularDimensionamiento({
+        panel: paneles[panelKey],
+        cantPaneles: Number(cantPaneles) || 0,
+        consumoPromedioKwh,
+        pagoPromedioCFE,
+        factores,
+      }),
+    [paneles, panelKey, cantPaneles, consumoPromedioKwh, pagoPromedioCFE, factores]
+  );
 
   // --- ESTADOS PASO 4: OTROS CARGOS & COTIZACIÓN ---
   const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>(null);
@@ -127,25 +137,36 @@ export default function NuevoProyecto() {
 
   const [conceptos, setConceptos] = useState<ConceptoCotizacion[]>(CONCEPTOS_COTIZACION_DEFECTO);
 
-  // Ajuste automático de costos sugeridos de paneles e inversores al cambiar Paso 3
+  // Costo de paneles e inversores según el equipo elegido en el Paso 3.
+  //
+  // Antes aquí había dos precios escritos a mano (4400 y 13500) que coincidían
+  // con los de la semilla, razón por la que el error pasó desapercibido: al
+  // cambiar el precio de un panel en Configuración → Catálogo, la cotización
+  // seguía usando el valor viejo. Ahora se toma `precioUnitario` del catálogo
+  // real, que es también el que usa la recomendación del Paso 3 — si no
+  // coincidieran, las tarjetas dirían un número y la cotización otro.
   useEffect(() => {
     const numPaneles = Number(cantPaneles) || 0;
     const numInversores = Number(cantInversores) || 0;
+    const precioPanel = paneles[panelKey]?.precioUnitario ?? 0;
+    const precioInversor = inversores[inversorKey]?.precioUnitario ?? 0;
 
-    setConceptos((prev) =>
-      prev.map((c) => {
-        if (c.id === '1' && numPaneles > 0) {
-          // Estimación sugerida de precio de paneles: $4,400 MXN por panel
-          return { ...c, costoBase: numPaneles * 4400 };
+    setConceptos((prev) => {
+      const siguiente = prev.map((c) => {
+        if (c.id === '1' && numPaneles > 0 && precioPanel > 0) {
+          return { ...c, costoBase: numPaneles * precioPanel };
         }
-        if (c.id === '2' && numInversores > 0) {
-          // Estimación sugerida de precio de inversor: $13,500 MXN por inversor
-          return { ...c, costoBase: numInversores * 13500 };
+        if (c.id === '2' && numInversores > 0 && precioInversor > 0) {
+          return { ...c, costoBase: numInversores * precioInversor };
         }
         return c;
-      })
-    );
-  }, [cantPaneles, cantInversores]);
+      });
+
+      // Devolver la misma referencia cuando nada cambió evita un render extra
+      // por cada tecleo en cualquier otro campo del wizard.
+      return siguiente.some((c, i) => c.costoBase !== prev[i]?.costoBase) ? siguiente : prev;
+    });
+  }, [cantPaneles, cantInversores, panelKey, inversorKey, paneles, inversores]);
 
   // Cálculos dinámicos de cotización compartidos entre Paso 4 y Paso 5
   const estructuraActual = useMemo(
@@ -153,6 +174,35 @@ export default function NuevoProyecto() {
     [estructuraSeleccionadaId, estructuras]
   );
   const precioEstructura = estructuraActual ? estructuraActual.precio : 0;
+
+  // Recomendación automática de paquetes para las tarjetas del Paso 3.
+  //
+  // `paneles`/`inversores` del wizard (ver `./types`) traen `clave` y
+  // `precioUnitario` pero NO `activo`/`orden`, que sí exige el `PanelData` /
+  // `InversorData` de `packages/shared` (consumidos por `recomendarPaquetes`
+  // para filtrar catálogo inactivo y para desempatar candidatos). Los datos
+  // reales (API o catálogo de respaldo) no tienen noción de "inactivo" en
+  // esta capa — el backend ya filtra lo que expone en `/api/config` — así
+  // que `activo: true` es siempre correcto aquí; `orden` solo se usa como
+  // desempate estable y el orden de iteración de `Object.values` es un
+  // criterio tan válido como cualquier otro. Se completa en el punto de
+  // llamada en vez de tocar los tipos de `packages/shared` o los del wizard.
+  const recomendacionEquipo = useMemo(
+    () =>
+      recomendarPaquetes({
+        paneles: Object.values(paneles).map((panel, indice) => ({ ...panel, activo: true, orden: indice })),
+        inversores: Object.values(inversores).map((inversor, indice) => ({
+          ...inversor,
+          activo: true,
+          orden: indice,
+        })),
+        consumoPromedioKwh,
+        pagoPromedioCFE,
+        factores,
+        costos: { costoFijo: precioEstructura },
+      }),
+    [paneles, inversores, consumoPromedioKwh, pagoPromedioCFE, factores, precioEstructura]
+  );
 
   const totalesCotizacion = useMemo(
     () =>
@@ -182,7 +232,11 @@ export default function NuevoProyecto() {
   // escalonamiento como DAC, o el backend sin ese mes todavía), el wizard sigue
   // funcionando con el respaldo offline (promedio pago/kWh histórico) y Paso 5 avisa
   // que el cálculo es aproximado.
-  const { escalonesPorPeriodo, completo: tarifasCompletas, cargando: cargandoTarifas } = useTarifasCfe(
+  const {
+    escalonesPorPeriodo,
+    completo: tarifasCompletas,
+    cargando: cargandoTarifas,
+  } = useTarifasCfe(
     consumos,
     localidadConsumo,
     tarifaSeleccionada
@@ -225,12 +279,27 @@ export default function NuevoProyecto() {
     pasoActual: pasoActivo,
   });
 
+  // Guardar sin avisar hacía que los botones parecieran muertos: el proyecto
+  // se persistía pero en pantalla no cambiaba nada. El aviso es la única
+  // señal de que funcionó, porque el wizard se queda donde está.
   const handleGuardarBorrador = async () => {
-    await guardar(datosParaGuardar(), 'borrador');
+    try {
+      await guardar(datosParaGuardar(), 'borrador');
+      toast.success('Borrador guardado.');
+    } catch {
+      // `guardar` ya deja el motivo en `errorGuardado`, que se pinta en pantalla.
+      toast.error('No se pudo guardar el borrador.');
+    }
   };
 
   const handleCrearProyecto = async () => {
-    await guardar(datosParaGuardar(), 'cotizado');
+    const esNuevo = !proyectoId;
+    try {
+      await guardar(datosParaGuardar(), 'cotizado');
+      toast.success(esNuevo ? 'Proyecto creado.' : 'Proyecto guardado.');
+    } catch {
+      toast.error(esNuevo ? 'No se pudo crear el proyecto.' : 'No se pudo guardar el proyecto.');
+    }
   };
 
   // --- REHIDRATACIÓN DE UN PROYECTO EXISTENTE (?id=) ---
@@ -284,6 +353,12 @@ export default function NuevoProyecto() {
             pago: String(c.pago),
           }))
         );
+
+        // Al abrir un proyecto guardado se fuerza el cálculo manual aunque el
+        // check estuviera activado: sus pagos son los que se cotizaron en su
+        // día, y recalcularlos con las tarifas de hoy alteraría una cotización
+        // ya entregada al cliente.
+        setCalcularPagoAuto(false);
 
         const cotizacion = proyecto.cotizaciones[0];
         if (cotizacion) {
@@ -372,6 +447,12 @@ export default function NuevoProyecto() {
             setPeriodo={setPeriodo}
             consumos={consumos}
             setConsumos={setConsumos}
+            calcularPagoAuto={calcularPagoAuto}
+            setCalcularPagoAuto={setCalcularPagoAuto}
+            escalonesPorPeriodo={escalonesPorPeriodo}
+            cargandoTarifas={cargandoTarifas}
+            tarifasDelPeriodo={tarifasCompletas}
+            pagoMinimoCfe={factores.pagoMinimoCfe}
             onAnterior={() => setPasoActivo(1)}
             onSiguiente={() => setPasoActivo(3)}
           />
@@ -399,7 +480,7 @@ export default function NuevoProyecto() {
             inversores={inversores}
             limiteDacKwh={limiteDacKwh}
             costoPromedioKwh={costoPromedioKwh}
-            onActualizar={refrescarConfig}
+            recomendacionEquipo={recomendacionEquipo}
             onAnterior={() => setPasoActivo(2)}
             onSiguiente={() => setPasoActivo(4)}
           />
