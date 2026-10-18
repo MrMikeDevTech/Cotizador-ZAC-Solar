@@ -1,8 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { Download } from 'lucide-react';
+import { Icono } from '../../../../components/Icono';
 import Card from './Card';
-import { api } from '../../../../../lib/api';
+import { ApiError, api } from '../../../../../lib/api';
+import { descargarBlob } from '../../../../../lib/descargarBlob';
 
 interface AccionesProyectoProps {
   proyectoId?: string;
@@ -73,20 +76,40 @@ export default function AccionesProyecto({
     }
   };
 
-  /** PDF generado offline en el proceso principal de Electron (webContents.printToPDF). */
+  /**
+   * PDF de la cotización/documento. Siempre acaba en un archivo guardado:
+   * nunca en el diálogo de impresión.
+   *
+   * - En Electron (`window.api.generarPdf` existe): el proceso principal
+   *   renderiza con `printToPDF()`, pregunta dónde guardar y registra el
+   *   documento en `/api/documentos`, que es lo que corresponde en una app
+   *   de escritorio.
+   * - En el navegador no hay acceso a ese IPC, así que el PDF lo genera el
+   *   backend (`GET /api/documentos/pdf/:tipo/:proyectoId`) y aquí sólo se
+   *   dispara la descarga del blob. El navegador no puede producir un PDF
+   *   por su cuenta —`window.print()` es lo único que ofrece, y obliga al
+   *   usuario a elegir "Guardar como PDF"—, por eso el render vive en el
+   *   servidor: en la app instalada lo hace el Chromium de Electron y en
+   *   desarrollo el del sistema.
+   */
   const generarPdf = async (tipo: TipoDocumento, nombreSugerido: string) => {
     if (!proyectoId) {
       setMensajeDocumento('Guarda el proyecto antes de generar este documento.');
-      return;
-    }
-    if (!window.api?.generarPdf) {
-      setMensajeDocumento('La generación de documentos solo está disponible en la app de escritorio.');
       return;
     }
 
     setGenerando(tipo);
     setMensajeDocumento(null);
     try {
+      if (!window.api?.generarPdf) {
+        const { blob, nombreArchivo } = await api.descargar(
+          `/api/documentos/pdf/${tipo}/${proyectoId}`
+        );
+        descargarBlob(blob, nombreArchivo ?? `${nombreSugerido}.pdf`);
+        setMensajeDocumento('Descarga iniciada.');
+        return;
+      }
+
       const resultado = await window.api.generarPdf({ tipo, proyectoId, nombreSugerido });
       if (resultado.ok && resultado.ruta) {
         await api.post(`/api/documentos/proyectos/${proyectoId}/${tipo}`, {
@@ -97,8 +120,12 @@ export default function AccionesProyecto({
       } else if (resultado.mensaje !== 'Cancelado') {
         setMensajeDocumento(resultado.mensaje ?? 'No se pudo generar el documento.');
       }
-    } catch {
-      setMensajeDocumento('No se pudo generar el documento.');
+    } catch (error) {
+      // El backend explica por qué falló (sin Chromium, proyecto sin
+      // cotización vigente…); repetirlo es más útil que un texto genérico.
+      setMensajeDocumento(
+        error instanceof ApiError ? error.message : 'No se pudo generar el documento.'
+      );
     } finally {
       setGenerando(null);
     }
@@ -288,9 +315,7 @@ export default function AccionesProyecto({
           disabled={generando === 'cotizacion'}
           className="bg-[#f7931e] hover:bg-orange-500 text-white font-bold text-sm md:text-base px-8 md:px-12 py-3.5 md:py-4 rounded-full shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all flex items-center gap-3 cursor-pointer disabled:opacity-50"
         >
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 20 20">
-            <path d="M13 8V2H7v6H2l8 8 8-8h-5zM0 18h20v2H0v-2z" />
-          </svg>
+          <Icono icon={Download} size={20} />
           {generando === 'cotizacion' ? 'Generando…' : 'Descargar cotización'}
         </button>
       </div>

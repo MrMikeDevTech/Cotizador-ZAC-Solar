@@ -30,12 +30,17 @@ interface Paso1ContactoProps {
   datosContacto?: DatosContacto;
   onActualizarDatos?: (datos: Partial<DatosContacto>) => void;
   onSiguiente: () => void;
+  /** Guarda como borrador sin salir del paso. */
+  onGuardar?: () => void;
+  guardando?: boolean;
 }
 
 export default function Paso1Contacto({
   datosContacto,
   onActualizarDatos,
   onSiguiente,
+  onGuardar,
+  guardando = false,
 }: Paso1ContactoProps) {
   const [mostrarEmpresariales, setMostrarEmpresariales] = useState(
     datosContacto?.mostrarEmpresariales ?? false
@@ -354,10 +359,18 @@ export default function Paso1Contacto({
         </Link>
         <button
           type="button"
+          onClick={onGuardar}
+          disabled={guardando}
+          className="border border-[#00388d] text-[#00388d] px-6 py-3 rounded-full text-sm font-bold hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button
+          type="button"
           onClick={onSiguiente}
           className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"
         >
-          Guardar y continuar
+          Continuar a Consumo
         </button>
       </div>
     </form>

@@ -1,8 +1,0 @@
-packages:
-  - 'apps/*'
-  - 'packages/*'
-allowBuilds:
-  '@prisma/engines': false
-  better-sqlite3: false
-  electron-winstaller: false
-  prisma: false

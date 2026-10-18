@@ -22,6 +22,9 @@ export interface ContactoImpreso {
   estado: string;
   localidad: string;
   fuenteContacto: string;
+  /** Las empresas se identifican por razón social, no por la persona de contacto. */
+  esEmpresa: boolean;
+  razonSocial: string;
 }
 
 export interface ConsumoImpreso {
@@ -37,12 +40,14 @@ export interface ConceptoImpreso {
   concepto: string;
   costoBase: number;
   margenPorcentaje: number;
+  orden: number;
 }
 
 export interface CargoImpreso {
   id: string;
   nombre: string;
   monto: number;
+  orden: number;
 }
 
 /**
@@ -87,6 +92,7 @@ export interface CotizacionImpresa {
   kmAuto: number;
 
   metodoPrecio: string;
+  metodoPago: string;
   tipoMoneda: string;
   valorDolar: number;
   incluirIva: boolean;

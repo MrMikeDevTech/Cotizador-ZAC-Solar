@@ -68,10 +68,17 @@ export async function sembrarCatalogos(prisma: PrismaClient): Promise<void> {
     }
   }
 
-  const totalLocalidades = await prisma.localidad.count();
-  if (totalLocalidades === 0) {
-    for (const localidad of LOCALIDADES_INICIALES) {
-      await prisma.localidad.create({ data: localidad });
-    }
+  // Las localidades son el único catálogo que se siembra por fila y no "solo
+  // si la tabla está vacía": al ampliar la zona de cobertura, los municipios
+  // nuevos tienen que llegar también a una instalación que ya venía usándose.
+  // El `update: {}` es deliberado: si el usuario afinó el factor de producción
+  // de su municipio desde Configuración → Utilidad, una actualización de la
+  // app no puede pisárselo.
+  for (const localidad of LOCALIDADES_INICIALES) {
+    await prisma.localidad.upsert({
+      where: { estado_nombre: { estado: localidad.estado, nombre: localidad.nombre } },
+      create: localidad,
+      update: {},
+    });
   }
 }

@@ -129,3 +129,52 @@
 .evitar-corte {
   break-inside: avoid;
 }
+
+/* ---------------------------------------------------------------------------
+ * Fuentes del documento de cotización, autoalojadas.
+ *
+ * Van en `public/fonts/` y no por `next/font/google` a propósito: esa API
+ * descarga en tiempo de compilación, lo que exigiría internet para generar el
+ * instalador. Con los woff2 versionados, ni compilar ni ejecutar tocan la red.
+ * `font-display: swap` evita que el texto quede invisible si una fuente
+ * fallara: el PDF saldría con la familia de respaldo en vez de en blanco.
+ * ------------------------------------------------------------------------ */
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/playfair-display-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Playfair Display';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/playfair-display-700.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Oswald';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/oswald-600.woff2') format('woff2');
+}

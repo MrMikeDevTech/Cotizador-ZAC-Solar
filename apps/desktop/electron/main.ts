@@ -73,16 +73,54 @@ function resolveImprimirUrl(tipo: string, proyectoId: string): string {
   return `${rendererBaseUrl}/documentos/imprimir/${query}`;
 }
 
-/** Espera a que la vista de impresión marque `document.title = "LISTO"` (o "ERROR"). */
+/** Espera a que la vista de impresión marque `document.body.dataset.listo = "1"` (o "error"). */
 async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 8000): Promise<void> {
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
-    const titulo: string = await win.webContents.executeJavaScript("document.title");
-    if (titulo === "LISTO") return;
-    if (titulo === "ERROR") throw new Error("El proyecto no se pudo cargar para generar el documento.");
+    const listo: string = await win.webContents.executeJavaScript("document.body.dataset.listo");
+    if (listo === "1") return;
+    if (listo === "error") throw new Error("El proyecto no se pudo cargar para generar el documento.");
     await new Promise((r) => setTimeout(r, 150));
   }
   throw new Error("Tiempo de espera agotado generando el documento.");
+}
+
+/**
+ * Renderiza una URL del renderer a PDF con el Chromium que ya trae Electron.
+ *
+ * Es la única definición de "cómo se hace un PDF aquí": la usa tanto el canal
+ * IPC `generar-pdf` (botones del escritorio, con diálogo de guardado) como el
+ * backend embebido, que la recibe inyectada y la expone en
+ * `GET /api/documentos/pdf/...` para que el navegador descargue el archivo sin
+ * pasar por el diálogo de impresión. Así la app instalada no necesita ningún
+ * Chromium adicional.
+ */
+async function renderizarUrlAPdf(url: string): Promise<Buffer> {
+  const ventana = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, contextIsolation: true },
+  });
+
+  try {
+    await ventana.loadURL(url);
+    await esperarListoParaImprimir(ventana);
+
+    // `printBackground: true` es imprescindible: por defecto Chromium
+    // descarta fondos y bordes de color al imprimir, y el documento saldría
+    // sin el azul corporativo ni las bandas de las tablas.
+    //
+    // Los márgenes van en 0 a propósito: el espacio en blanco lo controla el
+    // propio documento desde CSS (`@page`), que es donde se puede ajustar sin
+    // recompilar Electron.
+    return await ventana.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "Letter",
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      preferCSSPageSize: true,
+    });
+  } finally {
+    ventana.destroy();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +189,11 @@ async function iniciarBackend(): Promise<string> {
   const prisma = crearClientePrisma(dbPath);
   await sembrarCatalogos(prisma);
 
-  const honoApp = crearApp(prisma);
+  // `rendererBaseUrl` se pasa como getter porque se resuelve más tarde
+  // (`port: 0` del servidor del renderer todavía no tiene puerto aquí).
+  const honoApp = crearApp(prisma, {
+    pdf: { renderizar: renderizarUrlAPdf, rendererBaseUrl: () => rendererBaseUrl },
+  });
 
   // Deliberadamente sin `await`: la ventana no debe esperar a la red.
   void sincronizarTarifasCfe(prisma);
@@ -253,28 +295,10 @@ interface GenerarPdfPayload {
 
 /** Genera un PDF offline: ventana oculta con la vista de impresión + printToPDF + diálogo de guardado. */
 ipcMain.handle("generar-pdf", async (_event, payload: GenerarPdfPayload) => {
-  const ventana = new BrowserWindow({
-    show: false,
-    webPreferences: { sandbox: true, contextIsolation: true },
-  });
-
   try {
-    await ventana.loadURL(resolveImprimirUrl(payload.tipo, payload.proyectoId));
-    await esperarListoParaImprimir(ventana);
-
-    // `printBackground: true` es imprescindible: por defecto Chromium
-    // descarta fondos y bordes de color al imprimir, y el documento saldría
-    // sin el azul corporativo ni las bandas de las tablas.
-    //
-    // Los márgenes van en 0 a propósito: el espacio en blanco lo controla el
-    // propio documento desde CSS (`@page` en globals.css), que es donde se
-    // puede ajustar sin recompilar Electron.
-    const pdfBuffer = await ventana.webContents.printToPDF({
-      printBackground: true,
-      pageSize: "Letter",
-      margins: { top: 0, bottom: 0, left: 0, right: 0 },
-      preferCSSPageSize: true,
-    });
+    const pdfBuffer = await renderizarUrlAPdf(
+      resolveImprimirUrl(payload.tipo, payload.proyectoId),
+    );
 
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: "Guardar documento",
@@ -287,8 +311,6 @@ ipcMain.handle("generar-pdf", async (_event, payload: GenerarPdfPayload) => {
     return { ok: true, ruta: filePath };
   } catch (err) {
     return { ok: false, mensaje: String(err) };
-  } finally {
-    ventana.destroy();
   }
 });
 

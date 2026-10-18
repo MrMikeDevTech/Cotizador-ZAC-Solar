@@ -177,6 +177,64 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     assert.equal(actualizado.consumos.length, 6);
   });
 
+  test('PUT /api/proyectos/:id reutiliza el contacto en vez de duplicarlo', async () => {
+    const antes = await prisma.contacto.count();
+
+    const creado: any = await (
+      await req('/api/proyectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'borrador' })),
+      })
+    ).json();
+    assert.equal(await prisma.contacto.count(), antes + 1, 'crear el proyecto crea un contacto');
+
+    // Guardar desde los pasos 1 a 4 manda el payload completo sin
+    // `contactoExistenteId`. Antes, cada guardado creaba otro contacto con
+    // los mismos datos y dejaba el anterior huérfano en la lista.
+    for (let i = 0; i < 3; i++) {
+      await req(`/api/proyectos/${creado.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'borrador', pasoActual: i + 2 })),
+      });
+    }
+
+    assert.equal(await prisma.contacto.count(), antes + 1, 'tres guardados no deben crear contactos');
+  });
+
+  test('PUT /api/proyectos/:id escribe los cambios del Paso 1 sobre el mismo contacto', async () => {
+    const creado: any = await (
+      await req('/api/proyectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadProyecto({ faseSlug: 'borrador' })),
+      })
+    ).json();
+    const contactoId = creado.contacto.id;
+    const codigoOriginal = creado.contacto.codigo;
+
+    const base = payloadProyecto({ faseSlug: 'borrador' }) as any;
+    const actualizado: any = await (
+      await req(`/api/proyectos/${creado.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...base,
+          datosContacto: { ...base.datosContacto, telefono: '3110000000', notas: 'Prefiere llamadas por la tarde' },
+        }),
+      })
+    ).json();
+
+    // Mismo contacto, datos actualizados: corregir un teléfono en el Paso 1
+    // debe modificar al cliente, no clonarlo.
+    assert.equal(actualizado.contacto.id, contactoId);
+    assert.equal(actualizado.contacto.telefono, '3110000000');
+    assert.equal(actualizado.contacto.notas, 'Prefiere llamadas por la tarde');
+    // El código es la referencia visible del contacto: no se recalcula.
+    assert.equal(actualizado.contacto.codigo, codigoOriginal);
+  });
+
   test('GET /api/proyectos/:id con id inexistente responde 404 con forma de error consistente', async () => {
     const res = await req('/api/proyectos/no-existe');
     assert.equal(res.status, 404);
@@ -214,5 +272,131 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     assert.equal(res.status, 400);
     const body: any = await res.json();
     assert.equal(body.error.codigo, 'VALIDACION');
+  });
+
+  test('PUT /api/config/empresa con los cinco campos nuevos los guarda, y GET /api/config los devuelve', async () => {
+    const res = await req('/api/config/empresa', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: 'ZAC Solar',
+        telefono: '3271234567',
+        localidad: 'Nayarit',
+        email: 'info@zacsolar.com',
+        descripcion: 'Empresa solar',
+        rfc: 'ABC123456XYZ',
+        tituloCotizacion: 'Propuesta de Sistema Solar',
+        introPlantilla: 'Bienvenido a nuestro análisis',
+        observaciones: 'Sujeto a disponibilidad',
+        firmaNombre: 'Juan Pérez',
+        firmaPuesto: 'Gerente Comercial',
+      }),
+    });
+    assert.equal(res.status, 200);
+    const empresa: any = await res.json();
+    assert.equal(empresa.tituloCotizacion, 'Propuesta de Sistema Solar');
+    assert.equal(empresa.introPlantilla, 'Bienvenido a nuestro análisis');
+    assert.equal(empresa.observaciones, 'Sujeto a disponibilidad');
+    assert.equal(empresa.firmaNombre, 'Juan Pérez');
+    assert.equal(empresa.firmaPuesto, 'Gerente Comercial');
+
+    const getRes = await req('/api/config');
+    assert.equal(getRes.status, 200);
+    const config: any = await getRes.json();
+    assert.equal(config.empresa.tituloCotizacion, 'Propuesta de Sistema Solar');
+    assert.equal(config.empresa.introPlantilla, 'Bienvenido a nuestro análisis');
+    assert.equal(config.empresa.observaciones, 'Sujeto a disponibilidad');
+    assert.equal(config.empresa.firmaNombre, 'Juan Pérez');
+    assert.equal(config.empresa.firmaPuesto, 'Gerente Comercial');
+  });
+
+  test('PUT /api/config/empresa sin los campos nuevos no rompe (toman valor por defecto)', async () => {
+    const res = await req('/api/config/empresa', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: 'Otra Empresa',
+        telefono: '1234567890',
+        localidad: 'Jalisco',
+        email: 'contacto@otra.com',
+        descripcion: 'Otra descripción',
+      }),
+    });
+    assert.equal(res.status, 200);
+    const empresa: any = await res.json();
+    assert.equal(empresa.tituloCotizacion, '');
+    assert.equal(empresa.introPlantilla, '');
+    assert.equal(empresa.observaciones, '');
+    assert.equal(empresa.firmaNombre, '');
+    assert.equal(empresa.firmaPuesto, '');
+  });
+
+  test('PUT /api/config/empresa acepta la misma fila que devuelve GET /api/config', async () => {
+    // El ciclo real de Configuración → Formato de cotización: lee la empresa
+    // y reenvía lo que recibió con un campo cambiado. La fila trae `rfc: null`
+    // (en la base es `String?`), y con `z.string().optional()` ese null hacía
+    // fallar el guardado **entero** con un genérico "Datos inválidos": se veía
+    // como que no se podía editar ni un solo campo.
+    // Sin RFC capturado, que es el estado de una empresa recién configurada.
+    // Se fuerza aquí porque otros tests de este archivo lo dejan escrito.
+    await prisma.empresa.update({ where: { id: '1' }, data: { rfc: null } });
+
+    const config: any = await (await req('/api/config')).json();
+    assert.equal(config.empresa.rfc, null, 'la API devuelve rfc nulo si no se capturó');
+
+    const res = await req('/api/config/empresa', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...config.empresa, tituloCotizacion: 'Cotización Sistema Fotovoltaico' }),
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(((await res.json()) as any).tituloCotizacion, 'Cotización Sistema Fotovoltaico');
+  });
+
+  test('Guardar un proyecto con metodoPago: "Financiado" y recuperarlo devuelve ese valor en la cotización', async () => {
+    const res = await req('/api/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadProyecto({
+        otrosCargos: {
+          estructuraId: null,
+          metodoPrecio: 'unitario',
+          incluirIva: false,
+          tipoMoneda: 'MXN',
+          valorDolar: 16.9,
+          ocultarDesglose: false,
+          descuento5: false,
+          descuento10: false,
+          metodoPago: 'Financiado',
+          cargosEditables: [],
+          conceptos: conceptosFixture,
+        },
+      })),
+    });
+    assert.equal(res.status, 201);
+    const proyecto: any = await res.json();
+    assert.equal(proyecto.cotizaciones[0].metodoPago, 'Financiado');
+
+    const getRes = await req(`/api/proyectos/${proyecto.id}`);
+    assert.equal(getRes.status, 200);
+    const recuperado: any = await getRes.json();
+    assert.equal(recuperado.cotizaciones[0].metodoPago, 'Financiado');
+  });
+
+  test('Un proyecto guardado sin metodoPago devuelve "Contado"', async () => {
+    const res = await req('/api/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadProyecto()),
+    });
+    assert.equal(res.status, 201);
+    const proyecto: any = await res.json();
+    assert.equal(proyecto.cotizaciones[0].metodoPago, 'Contado');
+
+    const getRes = await req(`/api/proyectos/${proyecto.id}`);
+    assert.equal(getRes.status, 200);
+    const recuperado: any = await getRes.json();
+    assert.equal(recuperado.cotizaciones[0].metodoPago, 'Contado');
   });
 });

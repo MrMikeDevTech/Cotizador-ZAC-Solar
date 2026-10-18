@@ -6,6 +6,7 @@ import { useSesion } from '../../lib/SesionContext';
 import { NavPrincipal } from './NavPrincipal';
 
 const RUTA_LOGIN = '/login';
+const PREFIJO_DOCUMENTOS = '/documentos';
 
 /**
  * Quita la barra final de una ruta, dejando `/` intacta.
@@ -27,13 +28,21 @@ function normalizarRuta(ruta: string): string {
  * - Mientras se valida la sesión (al recargar la app) no decide nada, para
  *   no mostrar un parpadeo del login antes de confirmar que sí hay sesión.
  *
- * También es responsable de que el nav principal no aparezca en `/login`.
+ * También es responsable de que el nav principal no aparezca en `/login` ni
+ * en `/documentos/*`: esas rutas son las vistas de impresión que Electron
+ * fotografía con `printToPDF` (y que también se abren directo en el
+ * navegador para "Guardar como PDF" desde ahí) — el menú de la app no debe
+ * terminar impreso dentro del documento. La sesión sigue exigida (la vista
+ * llama a `/api/proyectos/:id`, que va autenticado); solo se quita el
+ * cromo visual (nav + padding del `<main>`).
  */
 export function GuardSesion({ children }: { children: ReactNode }) {
   const { usuario, cargando } = useSesion();
   const pathname = usePathname();
   const router = useRouter();
-  const enLogin = normalizarRuta(pathname) === RUTA_LOGIN;
+  const rutaActual = normalizarRuta(pathname);
+  const enLogin = rutaActual === RUTA_LOGIN;
+  const enDocumentos = rutaActual === PREFIJO_DOCUMENTOS || rutaActual.startsWith(`${PREFIJO_DOCUMENTOS}/`);
 
   useEffect(() => {
     if (cargando) return;
@@ -65,7 +74,7 @@ export function GuardSesion({ children }: { children: ReactNode }) {
     );
   }
 
-  if (enLogin) {
+  if (enLogin || enDocumentos) {
     return <>{children}</>;
   }
 

@@ -25,6 +25,10 @@ export interface Paso4OtrosCargosProps {
   setEstructuraSeleccionadaId?: (id: string | null) => void;
   metodoPrecio?: MetodoPrecio;
   setMetodoPrecio?: (metodo: MetodoPrecio) => void;
+  metodoPago?: string;
+  setMetodoPago?: (metodo: string) => void;
+  observaciones?: string;
+  setObservaciones?: (val: string) => void;
   opcionesAvanzadas?: boolean;
   setOpcionesAvanzadas?: (val: boolean) => void;
   incluirIva?: boolean;
@@ -47,6 +51,9 @@ export interface Paso4OtrosCargosProps {
   conceptosIniciales?: ConceptoCotizacion[];
   estructuras?: EstructuraInstalacion[];
   onSiguiente?: () => void;
+  /** Guarda como borrador sin salir del paso. */
+  onGuardar?: () => void;
+  guardando?: boolean;
   onAnterior?: () => void;
 }
 
@@ -55,6 +62,10 @@ export default function Paso4OtrosCargos({
   setEstructuraSeleccionadaId: setControlledEstructuraId,
   metodoPrecio: controlledMetodoPrecio,
   setMetodoPrecio: setControlledMetodoPrecio,
+  metodoPago: controlledMetodoPago,
+  setMetodoPago: setControlledMetodoPago,
+  observaciones: controlledObservaciones,
+  setObservaciones: setControlledObservaciones,
   opcionesAvanzadas: controlledOpcionesAvanzadas,
   setOpcionesAvanzadas: setControlledOpcionesAvanzadas,
   incluirIva: controlledIncluirIva,
@@ -76,11 +87,15 @@ export default function Paso4OtrosCargos({
   conceptosIniciales,
   estructuras = LISTA_ESTRUCTURAS,
   onSiguiente,
+  onGuardar,
+  guardando = false,
   onAnterior,
 }: Paso4OtrosCargosProps) {
   // --- FALLBACKS LOCALES SI NO SE CONTROLAN DESDE EL PADRE ---
   const [localEstructuraId, setLocalEstructuraId] = useState<string | null>(null);
   const [localMetodoPrecio, setLocalMetodoPrecio] = useState<MetodoPrecio>('unitario');
+  const [localMetodoPago, setLocalMetodoPago] = useState<string>('Contado');
+  const [localObservaciones, setLocalObservaciones] = useState<string>('');
   const [localOpcionesAvanzadas, setLocalOpcionesAvanzadas] = useState<boolean>(false);
   const [localIncluirIva, setLocalIncluirIva] = useState<boolean>(false);
   const [localTipoMoneda, setLocalTipoMoneda] = useState<TipoMoneda>('MXN');
@@ -99,6 +114,12 @@ export default function Paso4OtrosCargos({
 
   const metodoPrecio = controlledMetodoPrecio !== undefined ? controlledMetodoPrecio : localMetodoPrecio;
   const setMetodoPrecio = setControlledMetodoPrecio || setLocalMetodoPrecio;
+
+  const metodoPago = controlledMetodoPago !== undefined ? controlledMetodoPago : localMetodoPago;
+  const setMetodoPago = setControlledMetodoPago || setLocalMetodoPago;
+
+  const observaciones = controlledObservaciones !== undefined ? controlledObservaciones : localObservaciones;
+  const setObservaciones = setControlledObservaciones || setLocalObservaciones;
 
   const opcionesAvanzadas = controlledOpcionesAvanzadas !== undefined ? controlledOpcionesAvanzadas : localOpcionesAvanzadas;
   const setOpcionesAvanzadas = setControlledOpcionesAvanzadas || setLocalOpcionesAvanzadas;
@@ -185,7 +206,30 @@ export default function Paso4OtrosCargos({
   return (
     <div className="space-y-6 animate-fade-in pt-2">
       {/* --- BOTONES ACCIONES SUPERIORES --- */}
-      <div className="flex flex-wrap justify-end gap-3 mb-6">
+      <div className="flex flex-wrap justify-end gap-3 mb-6 items-center">
+        <input
+          type="text"
+          list="metodoPagoList"
+          value={metodoPago}
+          onChange={(e) => setMetodoPago(e.target.value)}
+          placeholder="Método de pago"
+          className="border border-[#2dd4bf] text-[#2dd4bf] px-4 py-2 rounded-full font-semibold text-xs focus:outline-none focus:border-[#00388d] focus:ring-1 focus:ring-[#00388d] w-32"
+        />
+        <datalist id="metodoPagoList">
+          <option value="Contado" />
+          <option value="Transferencia bancaria" />
+          <option value="Depósito bancario" />
+          <option value="Efectivo" />
+          <option value="Tarjeta de crédito" />
+          <option value="Tarjeta de débito" />
+          <option value="Cheque" />
+          <option value="Financiamiento bancario" />
+          <option value="Crédito directo" />
+          <option value="Arrendamiento" />
+          <option value="Pago en parcialidades" />
+          <option value="Mixto" />
+        </datalist>
+
         <button
           type="button"
           onClick={() => setModalPrecioOpen(true)}
@@ -261,6 +305,22 @@ export default function Paso4OtrosCargos({
         </div>
       </div>
 
+      {/* --- OBSERVACIONES DEL PDF --- */}
+      <div className="space-y-2 pt-4">
+        <label htmlFor="observaciones" className="block text-sm font-semibold text-gray-700">
+          Observaciones del PDF
+        </label>
+        <textarea
+          id="observaciones"
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          placeholder="Una por línea"
+          rows={3}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#2dd4bf] focus:ring-1 focus:ring-[#2dd4bf] resize-none"
+        />
+        <p className="text-xs text-gray-500">Si lo dejas vacío se usan las de Configuración → Formato de Cotización</p>
+      </div>
+
       {/* --- NAVEGACIÓN INFERIOR --- */}
       <div className="flex justify-end items-center gap-6 pt-6 mt-6 border-t border-gray-100">
         <button
@@ -272,10 +332,18 @@ export default function Paso4OtrosCargos({
         </button>
         <button
           type="button"
+          onClick={onGuardar}
+          disabled={guardando}
+          className="border border-[#00388d] text-[#00388d] px-6 py-3 rounded-full text-sm font-bold hover:bg-blue-50 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button
+          type="button"
           onClick={onSiguiente}
           className="bg-[#f7931e] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-orange-500 transition-colors cursor-pointer"
         >
-          Guardar y continuar a Confirmación
+          Continuar a Confirmación
         </button>
       </div>
 

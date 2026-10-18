@@ -34,6 +34,8 @@ export interface DatosParaGuardar {
   cantInversores: number | '';
   estructuraSeleccionadaId: string | null;
   metodoPrecio: MetodoPrecio;
+  metodoPago: string;
+  observaciones: string;
   incluirIva: boolean;
   tipoMoneda: TipoMoneda;
   valorDolar: number;
@@ -73,6 +75,8 @@ function construirPayload(datos: DatosParaGuardar, faseSlug: string): GuardarPro
     otrosCargos: {
       estructuraId: datos.estructuraSeleccionadaId,
       metodoPrecio: datos.metodoPrecio,
+      metodoPago: datos.metodoPago,
+      observaciones: datos.observaciones,
       incluirIva: datos.incluirIva,
       tipoMoneda: datos.tipoMoneda,
       valorDolar: datos.valorDolar,

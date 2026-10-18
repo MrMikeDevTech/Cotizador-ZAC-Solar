@@ -14,6 +14,13 @@ import { FACTORES_CALCULO_DEFECTO as factoresDefecto, TARIFAS_INICIALES as tarif
 import { api } from './api';
 import { useSesion } from './SesionContext';
 
+/** Localidad del catálogo: alimenta los selectores de estado y municipio. */
+export interface LocalidadConfig {
+  id: string;
+  estado: string;
+  nombre: string;
+}
+
 export interface TarifaConfig {
   codigo: string;
   limiteDac: number | null;
@@ -32,6 +39,7 @@ interface ValorConfiguracion {
   empresa: DatosEmpresa | null;
   factores: FactoresCalculo;
   tarifas: TarifaConfig[];
+  localidades: LocalidadConfig[];
   conectado: boolean;
   cargando: boolean;
   refrescar: () => Promise<void>;
@@ -46,6 +54,7 @@ const ConfiguracionContext = createContext<ValorConfiguracion>({
   empresa: null,
   factores: factoresDefecto,
   tarifas: tarifasDefecto,
+  localidades: [],
   conectado: false,
   cargando: true,
   refrescar: async () => {},
@@ -69,6 +78,7 @@ interface RespuestaConfig {
   estructuras: EstructuraApi[];
   conceptos: ConceptoApi[];
   tarifas: TarifaConfig[];
+  localidades: LocalidadConfig[];
 }
 
 /** Antirrebote: no se revalida si la última carga terminó hace menos de esto. */
@@ -90,6 +100,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
     empresa: null,
     factores: factoresDefecto,
     tarifas: tarifasDefecto,
+    localidades: [],
     conectado: false,
     cargando: true,
   });
@@ -171,6 +182,7 @@ export function ConfiguracionProvider({ children }: { children: ReactNode }) {
           empresa: datos.empresa,
           factores: datos.factores ?? factoresDefecto,
           tarifas: datos.tarifas.length ? datos.tarifas : tarifasDefecto,
+          localidades: datos.localidades ?? [],
           conectado: true,
           cargando: false,
         });

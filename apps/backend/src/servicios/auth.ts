@@ -102,14 +102,26 @@ export async function limpiarSesionesExpiradas(tx: Cliente, usuarioId: string): 
   await tx.sesion.deleteMany({ where: { usuarioId, expiraEn: { lt: new Date() } } });
 }
 
-/** Crea una sesión y devuelve el token en claro (única vez que existe fuera de la DB). */
-export async function crearSesion(tx: Cliente, usuarioId: string): Promise<string> {
+/**
+ * Crea una sesión y devuelve el token en claro (única vez que existe fuera de la DB).
+ *
+ * `duracionMs` permite sesiones de vida muy corta para usos puntuales, como el
+ * token con el que el renderizador de PDF carga la vista de impresión: es una
+ * sesión de verdad —misma tabla, mismo hash, misma validación— y por eso no
+ * hace falta un camino de autenticación paralelo, pero caduca en segundos y se
+ * revoca en cuanto el PDF está generado.
+ */
+export async function crearSesion(
+  tx: Cliente,
+  usuarioId: string,
+  duracionMs: number = SESION_DURACION_MS
+): Promise<string> {
   const token = generarToken();
   await tx.sesion.create({
     data: {
       tokenHash: hashearToken(token),
       usuarioId,
-      expiraEn: new Date(Date.now() + SESION_DURACION_MS),
+      expiraEn: new Date(Date.now() + duracionMs),
     },
   });
   return token;

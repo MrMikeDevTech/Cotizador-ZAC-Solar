@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { ZodError } from 'zod';
 import type { PrismaClient } from './generated/prisma/client.ts';
-import type { VariablesApp } from './tipos.ts';
+import type { OpcionesPdf, VariablesApp } from './tipos.ts';
 import { ErrorApi } from './errores.ts';
 import { middlewareSesion } from './middleware/sesion.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -45,7 +45,7 @@ function esOrigenPermitido(origin: string): boolean {
  * (dev.db en local, userData/cotizador.db dentro de Electron empaquetado).
  * La misma app corre bajo @hono/node-server tanto en dev como en producción.
  */
-export function crearApp(prisma: PrismaClient) {
+export function crearApp(prisma: PrismaClient, opciones?: { pdf?: OpcionesPdf }) {
   const app = new Hono<{ Variables: VariablesApp }>();
 
   app.use(
@@ -60,6 +60,7 @@ export function crearApp(prisma: PrismaClient) {
 
   app.use('*', async (c, next) => {
     c.set('prisma', prisma);
+    c.set('pdf', opciones?.pdf ?? null);
     await next();
   });
 

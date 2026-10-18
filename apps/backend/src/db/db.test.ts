@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { ejecutarMigraciones } from './migrador.ts';
 import { crearClientePrisma } from './cliente.ts';
 import { sembrarCatalogos } from './seed.ts';
+import { LOCALIDADES_INICIALES } from '@cotizador/shared';
 import type { PrismaClient } from '../generated/prisma/client.ts';
 
 describe('migrador + seed', () => {
@@ -40,7 +41,11 @@ describe('migrador + seed', () => {
     assert.equal(await prisma.estructura.count(), 6);
     assert.equal(await prisma.conceptoPlantilla.count(), 4);
     assert.equal(await prisma.tarifa.count(), 10);
-    assert.equal(await prisma.localidad.count(), 9);
+    // Municipios de Jalisco, Nayarit y los estados colindantes. Se compara
+    // contra la propia semilla en vez de un número fijo: la lista crece al
+    // ampliar la zona de cobertura y el test no debe romperse por ello.
+    assert.equal(await prisma.localidad.count(), LOCALIDADES_INICIALES.length);
+    assert.ok(LOCALIDADES_INICIALES.length > 100, 'la zona de cobertura debe traer municipios de varios estados');
 
     // Los catálogos sí se siembran (valores de arranque útiles); la empresa
     // no, porque es la identidad del usuario y no un valor por defecto.
