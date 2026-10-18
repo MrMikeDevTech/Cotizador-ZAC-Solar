@@ -23,6 +23,32 @@ export interface ResultadoTotalesCotizacion {
   porcentajeUtilidadTotal: number;
 }
 
+/** Porcentajes de descuento por pago en una sola exhibición, acumulables. */
+const DESCUENTO_5_PCT = 5;
+const DESCUENTO_10_PCT = 10;
+
+/**
+ * Porcentaje de descuento resultante de las dos casillas del Paso 4.
+ *
+ * Vive aquí y no en el componente porque `ModalAjustesExtras` necesita la
+ * misma regla para su vista previa: al tenerla duplicada, cambiar un
+ * porcentaje dejaba el modal mostrando una cifra y la cotización otra.
+ */
+export function calcularPorcentajeDescuento(descuento5: boolean, descuento10: boolean): number {
+  return (descuento5 ? DESCUENTO_5_PCT : 0) + (descuento10 ? DESCUENTO_10_PCT : 0);
+}
+
+/** Aplica el descuento a un subtotal. Comparte regla con `calcularTotalesCotizacion`. */
+export function aplicarDescuento(
+  subtotal: number,
+  descuento5: boolean,
+  descuento10: boolean
+): { porcentajeDescuento: number; montoDescuento: number; subtotalConDescuento: number } {
+  const porcentajeDescuento = calcularPorcentajeDescuento(descuento5, descuento10);
+  const montoDescuento = subtotal * (porcentajeDescuento / 100);
+  return { porcentajeDescuento, montoDescuento, subtotalConDescuento: subtotal - montoDescuento };
+}
+
 /**
  * Totales de la cotización (Paso 4 / Paso 5). Antes duplicada literalmente
  * entre page.tsx y Paso4OtrosCargos.tsx — ahora una sola fuente de verdad.
@@ -48,12 +74,11 @@ export function calcularTotalesCotizacion({
 
   const subtotalGeneral = subtotalConceptos + subtotalCargosEditables + precioEstructura;
 
-  let porcentajeDescuento = 0;
-  if (descuento5) porcentajeDescuento += 5;
-  if (descuento10) porcentajeDescuento += 10;
-
-  const montoDescuento = subtotalGeneral * (porcentajeDescuento / 100);
-  const subtotalConDescuento = subtotalGeneral - montoDescuento;
+  const { porcentajeDescuento, montoDescuento, subtotalConDescuento } = aplicarDescuento(
+    subtotalGeneral,
+    descuento5,
+    descuento10
+  );
 
   const montoIVA = incluirIva ? subtotalConDescuento * (ivaPorcentaje / 100) : 0;
   const granTotal = subtotalConDescuento + montoIVA;

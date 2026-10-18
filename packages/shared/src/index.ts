@@ -34,15 +34,30 @@ export type {
 export { generarCodigoAbreviado, formatearMoneda } from './calculos/formato.ts';
 export { calcularPromedios, calcularDimensionamiento } from './calculos/dimensionamiento.ts';
 export type { Promedios, EntradaDimensionamiento, ResultadoDimensionamiento } from './calculos/dimensionamiento.ts';
-export { calcularTotalesCotizacion, convertirMoneda } from './calculos/cotizacion.ts';
+export {
+  calcularTotalesCotizacion,
+  convertirMoneda,
+  calcularPorcentajeDescuento,
+  aplicarDescuento,
+} from './calculos/cotizacion.ts';
 export type { EntradaTotalesCotizacion, ResultadoTotalesCotizacion } from './calculos/cotizacion.ts';
 export { calcularProduccionEstacional, calcularDetalleRetornoInversion } from './calculos/bancoSolar.ts';
-export { calcularImporteCfe } from './calculos/importeCfe.ts';
-export type { EscalonTarifa } from './calculos/importeCfe.ts';
+export { calcularImporteCfe, calcularPagoRecibo } from './calculos/importeCfe.ts';
+export type { EscalonTarifa, EntradaPagoRecibo, ResultadoPagoRecibo } from './calculos/importeCfe.ts';
 export { calcularBeneficiosAmbientales } from './calculos/ambiental.ts';
 export type { BeneficiosAmbientales } from './calculos/ambiental.ts';
 export { calcularProyeccion5Anos, calcularROI, calcularTIR5Anos } from './calculos/financiero.ts';
 export type { Proyeccion5Anos } from './calculos/financiero.ts';
+export { recomendarPaquetes } from './calculos/recomendacion.ts';
+export type {
+  PerfilPaquete,
+  CodigoAdvertencia,
+  LimitesRecomendacion,
+  CostosRecomendacion,
+  EntradaRecomendacion,
+  PaqueteRecomendado,
+  ResultadoRecomendacion,
+} from './calculos/recomendacion.ts';
 
 export * from './seed/catalogosIniciales.ts';
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { calcularImporteCfe } from './importeCfe.ts';
+import { calcularImporteCfe, calcularPagoRecibo } from './importeCfe.ts';
 import type { EscalonTarifa } from './importeCfe.ts';
 
 // Tarifa 1A de verano (ejemplo real verificado contra CFE):
@@ -129,4 +129,94 @@ describe('calcularImporteCfe', () => {
       expect(importeLinealViejo).toBeGreaterThan(importeReal * 2);
     }
   );
+});
+
+describe('calcularPagoRecibo', () => {
+  test('recibo con escalones + DAP + IVA (verificado a mano, 150 kWh)', () => {
+    // cargoEnergia = calcularImporteCfe(150, ESCALONES_1A, 60) = 161.05
+    // montoDap = 161.05 * 0.05 = 8.0525
+    // subtotal con DAP = 169.1025
+    // montoIva = 169.1025 * 0.16 = 27.0564
+    // total = 161.05 + 8.0525 + 27.0564 = 196.1589 -> redondeado a 196.16
+    const resultado = calcularPagoRecibo({
+      consumoKwh: 150,
+      escalones: ESCALONES_1A,
+      pagoMinimo: PAGO_MINIMO,
+      ivaPct: 16,
+      dapPct: 5,
+    });
+
+    expect(resultado.cargoEnergia).toBe(161.05);
+    expect(resultado.montoDap).toBeCloseTo(8.0525, 4);
+    expect(resultado.montoIva).toBeCloseTo(27.0564, 4);
+    expect(resultado.total).toBe(196.16);
+  });
+
+  test('ivaPct: 0 y dapPct: 0 -> el total es exactamente el cargo de energía', () => {
+    const resultado = calcularPagoRecibo({
+      consumoKwh: 150,
+      escalones: ESCALONES_1A,
+      pagoMinimo: PAGO_MINIMO,
+      ivaPct: 0,
+      dapPct: 0,
+    });
+
+    expect(resultado.cargoEnergia).toBe(161.05);
+    expect(resultado.montoDap).toBe(0);
+    expect(resultado.montoIva).toBe(0);
+    expect(resultado.total).toBe(161.05);
+  });
+
+  test('consumo tan bajo que cae en el pago mínimo: el mínimo se aplica ANTES de DAP e IVA', () => {
+    // cargoEnergia = pagoMinimo = 60 (5 kWh * 1.019 = 5.095, muy por debajo del mínimo)
+    // montoDap = 60 * 0.10 = 6
+    // subtotal con DAP = 66
+    // montoIva = 66 * 0.16 = 10.56
+    // total = 60 + 6 + 10.56 = 76.56
+    const resultado = calcularPagoRecibo({
+      consumoKwh: 5,
+      escalones: ESCALONES_1A,
+      pagoMinimo: PAGO_MINIMO,
+      ivaPct: 16,
+      dapPct: 10,
+    });
+
+    expect(resultado.cargoEnergia).toBe(PAGO_MINIMO);
+    expect(resultado.montoDap).toBe(6);
+    expect(resultado.montoIva).toBeCloseTo(10.56, 4);
+    expect(resultado.total).toBe(76.56);
+  });
+});
+
+describe('calcularImporteCfe - periodos de más de un mes', () => {
+  // Tarifa 1A verano, julio 2025, tal como la publica CFE.
+  const escalones1AVerano2025: EscalonTarifa[] = [
+    { tierIndex: 0, concept: 'Consumo básico', price: 0.969, limitKwh: 100 },
+    { tierIndex: 1, concept: 'Consumo intermedio', price: 1.123, limitKwh: 50 },
+    { tierIndex: 2, concept: 'Consumo excedente', price: 3.861, limitKwh: null },
+  ];
+
+  test('un recibo bimestral duplica el cupo de cada escalón (recibo real: 963 kWh = $2,850)', () => {
+    // Los límites que publica CFE son MENSUALES. Aplicarlos tal cual a un
+    // consumo bimestral empuja al escalón excedente —el caro— kWh que aún
+    // tenían cupo barato, y sobrestima el recibo ~15 %.
+    const mensual = calcularImporteCfe(963, escalones1AVerano2025, 60, 1);
+    const bimestral = calcularImporteCfe(963, escalones1AVerano2025, 60, 2);
+
+    expect(mensual).toBeGreaterThan(3200);
+    // El recibo real fue $2,850; lo que queda es deriva de precio dentro del
+    // propio bimestre.
+    expect(Math.abs(bimestral - 2850) / 2850).toBeLessThan(0.02);
+  });
+
+  test('sin indicar meses se comporta como mensual (compatibilidad)', () => {
+    expect(calcularImporteCfe(963, escalones1AVerano2025, 60)).toBe(
+      calcularImporteCfe(963, escalones1AVerano2025, 60, 1)
+    );
+  });
+
+  test('el pago mínimo también escala con los meses del periodo', () => {
+    expect(calcularImporteCfe(0, escalones1AVerano2025, 60, 2)).toBe(120);
+    expect(calcularImporteCfe(0, escalones1AVerano2025, 60, 1)).toBe(60);
+  });
 });

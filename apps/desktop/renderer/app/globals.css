@@ -78,3 +78,54 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Impresión / generación de PDF
+ *
+ * Lo usa la vista `/documentos/imprimir`, que Electron carga en una ventana
+ * oculta para pasarla por `webContents.printToPDF()` (ver electron/main.ts,
+ * canal IPC "generar-pdf"). Ese lado manda `preferCSSPageSize: true` y
+ * márgenes 0, así que el tamaño y los márgenes reales del papel se deciden
+ * AQUÍ y se pueden ajustar sin recompilar Electron.
+ * ------------------------------------------------------------------------ */
+
+@page {
+  size: letter;
+  margin: 16mm 14mm;
+}
+
+@media print {
+  /* Chromium descarta fondos al imprimir salvo que se le pida lo contrario.
+     Sin esto, las cabeceras azules y las bandas de las tablas salen blancas. */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  /* Nada de animaciones en un documento estático. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Utilidades de paginación. Se aplican igual en pantalla y en papel para que
+   la vista previa del navegador se parezca al PDF final. */
+
+/** Fuerza el inicio de una página nueva antes del elemento. */
+.salto-pagina-antes {
+  break-before: page;
+}
+
+/** Evita que el bloque se parta entre dos páginas (tablas, tarjetas, firmas). */
+.evitar-corte {
+  break-inside: avoid;
+}

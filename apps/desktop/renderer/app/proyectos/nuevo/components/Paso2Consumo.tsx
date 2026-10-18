@@ -1,9 +1,13 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Info, Loader2, TriangleAlert } from 'lucide-react';
+import { calcularPagoRecibo } from '@cotizador/shared';
+import type { EscalonTarifa } from '@cotizador/shared';
 import { ConsumoPeriodo } from '../types';
 import { tarifasClasicas, tarifasNuevas, opcionesHilos } from '../constants';
 import GraficaConsumo from './charts/GraficaConsumo';
+import { Icono } from '../../../components/Icono';
 
 interface Paso2ConsumoProps {
   nombreProyecto?: string;
@@ -37,9 +41,30 @@ interface Paso2ConsumoProps {
   setPeriodo: (val: string) => void;
   consumos: ConsumoPeriodo[];
   setConsumos: React.Dispatch<React.SetStateAction<ConsumoPeriodo[]>>;
-  
+
+  calcularPagoAuto: boolean;
+  setCalcularPagoAuto: (val: boolean) => void;
+  /** Escalones reales de CFE por periodo, alineados por índice con `consumos`. `null`/`undefined` = sin tarifa real. */
+  escalonesPorPeriodo: Array<EscalonTarifa[] | null>;
+  pagoMinimoCfe: number;
+  /** `true` mientras se resuelven las tarifas contra el backend. */
+  cargandoTarifas: boolean;
+  /**
+   * `true` solo si todos los periodos usan las cuotas de su mes exacto. Con
+   * `false` el cálculo salió de los últimos precios publicados, que es el
+   * caso normal: CFE no publica todos los meses de todas las temporadas.
+   */
+  tarifasDelPeriodo: boolean;
+
   onAnterior: () => void;
   onSiguiente: () => void;
+}
+
+/** Importe con separador de miles y dos decimales. Cadena vacía se deja vacía. */
+function formatearImporte(valor: string): string {
+  const n = Number(valor);
+  if (valor === '' || !Number.isFinite(n)) return valor;
+  return n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function Paso2Consumo({
@@ -49,7 +74,7 @@ export default function Paso2Consumo({
   setNombreRecibo,
   numeroServicio = '',
   setNumeroServicio,
-  ivaCFE = 16,
+  ivaCFE = 0,
   setIvaCFE,
   porcentajeDap = '',
   setPorcentajeDap,
@@ -73,6 +98,12 @@ export default function Paso2Consumo({
   setPeriodo,
   consumos,
   setConsumos,
+  calcularPagoAuto,
+  setCalcularPagoAuto,
+  escalonesPorPeriodo,
+  pagoMinimoCfe,
+  cargandoTarifas,
+  tarifasDelPeriodo,
   onAnterior,
   onSiguiente,
 }: Paso2ConsumoProps) {
@@ -80,6 +111,57 @@ export default function Paso2Consumo({
   useEffect(() => {
     setTarifaSeleccionada(usarNuevaTarifa ? 'PDBT' : '1A');
   }, [usarNuevaTarifa, setTarifaSeleccionada]);
+
+  // Periodos que sí tienen tarifa real descargada. El cálculo es **por
+  // periodo**, no todo o nada: exigir los 6 dejaba el check permanentemente
+  // deshabilitado, porque la sincronización solo baja el mes en curso y un
+  // historial de consumo se remonta un año atrás. Se calcula lo que se puede
+  // y el resto queda a mano, dicho claramente.
+  const periodosConTarifa = escalonesPorPeriodo.filter((e) => e != null).length;
+  const hayAlgunaTarifa = periodosConTarifa > 0;
+
+  // El check expresa **intención**, no disponibilidad: viene activado y solo
+  // cambia si lo tocas. Antes se auto-desmarcaba cuando faltaban tarifas, lo
+  // que obligaba a volver a marcarlo en cuanto llegaban — justo el "tener que
+  // hacer algo" que debe evitarse. Si no hay tarifa para un periodo, esa fila
+  // simplemente queda a mano y se dice por qué.
+
+  // Con el check marcado, el "Pago a CFE" de cada fila se recalcula con la
+  // tarifa escalonada real (packages/shared: calcularPagoRecibo) y se
+  // escribe directamente a `consumos[i].pago`, que es lo que leen los
+  // Pasos 3, 4 y 5 para promedios y retorno de inversión.
+  useEffect(() => {
+    if (!calcularPagoAuto) return;
+
+    setConsumos((prev) => {
+      let cambio = false;
+      const nuevos = prev.map((row, i) => {
+        const escalones = escalonesPorPeriodo[i];
+        if (!escalones) return row;
+
+        const resultado = calcularPagoRecibo({
+          consumoKwh: Number(row.kwh) || 0,
+          escalones,
+          pagoMinimo: pagoMinimoCfe,
+          ivaPct: ivaCFE,
+          dapPct: aplicarDap ? Number(porcentajeDap) || 0 : 0,
+          // Los límites de escalón que publica CFE son mensuales: un recibo
+          // bimestral da doble cupo antes de llegar al excedente.
+          mesesDelPeriodo: periodo === 'Bimestral' ? 2 : 1,
+        });
+        const nuevoPago = String(resultado.total);
+
+        if (nuevoPago === row.pago) return row;
+        cambio = true;
+        return { ...row, pago: nuevoPago };
+      });
+
+      // Si nada cambió, devolvemos la misma referencia: evita un
+      // re-render (y por lo tanto un re-disparo de este efecto) en bucle.
+      return cambio ? nuevos : prev;
+    });
+  }, [calcularPagoAuto, consumos, escalonesPorPeriodo, pagoMinimoCfe, ivaCFE, aplicarDap, porcentajeDap, periodo, setConsumos]);
+
 
   const handleFechaTextoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, '');
@@ -211,36 +293,26 @@ export default function Paso2Consumo({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-end">
-        <div className="space-y-8">
-          <div>
-            <label className="block text-xs font-bold text-gray-400 mb-1">
-              Nombre que aparece en el recibo
-            </label>
-            <input
-              type="text"
-              value={nombreRecibo}
-              onChange={(e) => setNombreRecibo?.(e.target.value)}
-              className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-400 mb-1">Número de servicio</label>
-            <input
-              type="text"
-              value={numeroServicio}
-              onChange={(e) => setNumeroServicio?.(e.target.value)}
-              className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
-            />
-          </div>
+      <div className="space-y-8 md:max-w-md">
+        <div>
+          <label className="block text-xs font-bold text-gray-400 mb-1">
+            Nombre que aparece en el recibo
+          </label>
+          <input
+            type="text"
+            value={nombreRecibo}
+            onChange={(e) => setNombreRecibo?.(e.target.value)}
+            className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+          />
         </div>
-        <div className="flex pb-2">
-          <button
-            type="button"
-            className="bg-[#00388d] hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-full shadow-md transition-all text-sm cursor-pointer"
-          >
-            Obtener Consumos de CFE
-          </button>
+        <div>
+          <label className="block text-xs font-bold text-gray-400 mb-1">Número de servicio</label>
+          <input
+            type="text"
+            value={numeroServicio}
+            onChange={(e) => setNumeroServicio?.(e.target.value)}
+            className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
+          />
         </div>
       </div>
 
@@ -315,6 +387,43 @@ export default function Paso2Consumo({
             <option value="Mensual">Mensual</option>
           </select>
         </div>
+        <div className="max-w-sm">
+          {/* Nunca deshabilitado: el check dice qué quieres, no si hay datos. */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={calcularPagoAuto}
+              onChange={(e) => setCalcularPagoAuto(e.target.checked)}
+              className="w-4 h-4 text-[#00388d] border-gray-300 rounded focus:ring-[#00388d]"
+            />
+            <span className="text-xs text-gray-500">
+              Calcular el pago con la tarifa de CFE
+            </span>
+          </label>
+
+          {calcularPagoAuto && cargandoTarifas && (
+            <p className="flex items-center gap-1.5 text-[11px] text-gray-400 mt-1.5">
+              <Icono icon={Loader2} size={13} className="shrink-0 animate-spin" />
+              Consultando tarifas…
+            </p>
+          )}
+
+          {calcularPagoAuto && !cargandoTarifas && hayAlgunaTarifa && !tarifasDelPeriodo && (
+            <p className="flex items-start gap-1.5 text-[11px] text-gray-500 mt-1.5 leading-snug">
+              <Icono icon={Info} size={13} className="shrink-0 mt-0.5 text-[#00388d]" />
+              Calculado con los últimos precios publicados por CFE. Actualízalos en Configuración →
+              Precios de kWh.
+            </p>
+          )}
+
+          {calcularPagoAuto && !cargandoTarifas && !hayAlgunaTarifa && (
+            <p className="flex items-start gap-1.5 text-[11px] text-gray-400 mt-1.5 leading-snug">
+              <Icono icon={TriangleAlert} size={13} className="shrink-0 mt-0.5" />
+              No hay precios de CFE guardados para la tarifa {tarifaSeleccionada}. Descárgalos en
+              Configuración → Precios de kWh.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="w-full overflow-x-auto mt-4">
@@ -345,12 +454,45 @@ export default function Paso2Consumo({
                 <td className="py-3">
                   <div className="flex justify-end items-center gap-1">
                     <span className="text-gray-400">$</span>
-                    <input
-                      type="number"
-                      value={row.pago}
-                      onChange={(e) => handleConsumoChange(index, 'pago', e.target.value)}
-                      className="w-32 border border-gray-200 rounded px-3 py-2 text-right focus:outline-none focus:border-[#00388d]"
-                    />
+                    {/* Solo se bloquea la fila que de verdad se calculó: las que
+                        no tienen tarifa real siguen siendo editables a mano.
+                        La calculada se pinta como texto y no como input para
+                        poder mostrarla con dos decimales y la moneda. */}
+                    {calcularPagoAuto && escalonesPorPeriodo[index] != null ? (
+                      <div className="w-36 border border-gray-200 bg-gray-100 rounded px-3 py-2 text-right text-gray-500">
+                        {formatearImporte(row.pago)}
+                        <span className="text-[10px] text-gray-400 ml-1">MXN</span>
+                      </div>
+                    ) : (
+                      <div className="w-36 flex items-center">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={row.pago}
+                          onChange={(e) => handleConsumoChange(index, 'pago', e.target.value)}
+                          onBlur={(e) => {
+                            // Al salir del campo se normaliza a dos decimales,
+                            // para que lo capturado a mano y lo calculado se
+                            // lean igual.
+                            const n = Number(e.target.value);
+                            if (e.target.value !== '' && Number.isFinite(n)) {
+                              handleConsumoChange(index, 'pago', n.toFixed(2));
+                            }
+                          }}
+                          title={
+                            calcularPagoAuto
+                              ? 'Sin tarifa de CFE para este periodo: captúralo a mano'
+                              : undefined
+                          }
+                          className={`w-full border rounded px-3 py-2 text-right focus:outline-none ${
+                            calcularPagoAuto
+                              ? 'border-[#f7931e]/50 focus:border-[#00388d]'
+                              : 'border-gray-200 focus:border-[#00388d]'
+                          }`}
+                        />
+                        <span className="text-[10px] text-gray-400 ml-1 shrink-0">MXN</span>
+                      </div>
+                    )}
                   </div>
                 </td>
               </tr>

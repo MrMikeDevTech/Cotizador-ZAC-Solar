@@ -3,11 +3,12 @@ import { z } from 'zod';
 import { zValidator } from '../validacion.ts';
 import { ErrorApi, NoEncontradoError } from '../errores.ts';
 import { seasonFor } from '@cotizador/cfe-scraper';
+import { syncCfeRates } from '../servicios/cfeRates.ts';
 import type { VariablesApp } from '../tipos.ts';
 
 export const cfeRatesRoutes = new Hono<{ Variables: VariablesApp }>();
 
-const TARIFF_CODES = ['1', '1A', '1B', '1C', '1D', '1E', '1F'] as const;
+const TARIFF_CODES = ['1', '1A', '1B', '1C', '1D', '1E', '1F', 'DAC'] as const;
 
 const consultaSchema = z.object({
   tariff: z.enum(TARIFF_CODES),
@@ -52,6 +53,31 @@ cfeRatesRoutes.get('/', zValidator('query', consultaSchema), async (c) => {
   const prisma = c.get('prisma');
   const { tariff, year, month, season } = c.req.valid('query');
 
+  // DAC tiene su propia tabla y forma: por región, sin escalones de consumo.
+  if (tariff === 'DAC') {
+    const filas = await prisma.cfeDacRate.findMany({
+      where: { year, month },
+      orderBy: { region: 'asc' },
+    });
+
+    if (filas.length === 0) {
+      throw new NoEncontradoError(`Tarifa DAC para ${year}-${String(month).padStart(2, '0')}`);
+    }
+
+    return c.json({
+      tariffCode: tariff,
+      year,
+      month,
+      regions: filas.map((f) => ({
+        region: f.region,
+        cargoFijo: f.cargoFijo,
+        precioKwh: f.precioKwh,
+        precioKwhVerano: f.precioKwhVerano,
+      })),
+    });
+  }
+
+  // Tarifas escalonadas (1, 1A, 1B, 1C, 1D, 1E, 1F)
   const escalones = await prisma.cfeTariffRate.findMany({
     where: { tariffCode: tariff, year, month, ...(season ? { season } : {}) },
     orderBy: { tierIndex: 'asc' },
@@ -87,6 +113,111 @@ cfeRatesRoutes.get('/', zValidator('query', consultaSchema), async (c) => {
     }));
 
   return c.json({ tariffCode: tariff, year, month, seasons });
+});
+
+// ─────────────────────────────────────────────────────────
+// Sincronización manual de tarifas CFE
+// ─────────────────────────────────────────────────────────
+
+/**
+ * Dispara una sincronización con el sitio de CFE y devuelve el resumen.
+ *
+ * **Degradación offline:** La aplicación es offline-first. Si la sincronización falla
+ * (sin red, CFE cambió el HTML, certificado caducado), responde **200** con `ok: false`
+ * y un mensaje legible del motivo. El frontend puede distinguir error transiente de
+ * fallo de la app, así que sigue con lo guardado localmente.
+ */
+/**
+ * Periodos concretos a descargar. Sin cuerpo, el scraper baja solo el mes en
+ * curso — suficiente para mantener al día lo actual, pero inútil para un
+ * historial de consumo, que se remonta un año atrás. El wizard manda aquí los
+ * periodos que de verdad le faltan para no descargar de más.
+ */
+const syncSchema = z
+  .object({
+    periodos: z
+      .array(z.object({ year: z.number().int().min(2000), month: z.number().int().min(1).max(12) }))
+      .min(1)
+      .max(24)
+      .optional(),
+  })
+  .optional();
+
+/**
+ * `syncCfeRates` acepta un único `year` con una lista de meses, así que los
+ * periodos se agrupan por año y se sincroniza una vez por año. Los totales se
+ * suman para devolver un solo resumen.
+ */
+async function sincronizarPeriodos(
+  prisma: Parameters<typeof syncCfeRates>[0],
+  periodos: { year: number; month: number }[]
+): Promise<Awaited<ReturnType<typeof syncCfeRates>>> {
+  const porAnio = new Map<number, Set<number>>();
+  for (const { year, month } of periodos) {
+    const meses = porAnio.get(year) ?? new Set<number>();
+    meses.add(month);
+    porAnio.set(year, meses);
+  }
+
+  const total = { saved: 0, dacSaved: 0, missing: 0, errors: 0, durationMs: 0 };
+
+  for (const [year, meses] of porAnio) {
+    const parcial = await syncCfeRates(prisma, {
+      year,
+      months: [...meses].sort((a, b) => a - b),
+      // Pedimos periodos concretos: caer al mes anterior falsearía el dato.
+      fallbackToPreviousMonth: false,
+    });
+    total.saved += parcial.saved;
+    total.dacSaved += parcial.dacSaved;
+    total.missing += parcial.missing;
+    total.errors += parcial.errors;
+    total.durationMs += parcial.durationMs;
+  }
+
+  return total;
+}
+
+cfeRatesRoutes.post('/sync', async (c) => {
+  const prisma = c.get('prisma');
+
+  // El cuerpo es opcional: sin él se mantiene el comportamiento de siempre.
+  let periodos: { year: number; month: number }[] | undefined;
+  try {
+    periodos = syncSchema.parse(await c.req.json().catch(() => undefined))?.periodos;
+  } catch {
+    throw new ErrorApi('VALIDACION', 'Formato de `periodos` inválido', 400);
+  }
+
+  try {
+    const resultado = periodos
+      ? await sincronizarPeriodos(prisma, periodos)
+      : await syncCfeRates(prisma);
+    return c.json(
+      {
+        ok: true,
+        saved: resultado.saved,
+        dacSaved: resultado.dacSaved,
+        missing: resultado.missing,
+        errors: resultado.errors,
+        durationMs: resultado.durationMs,
+      },
+      200
+    );
+  } catch (error) {
+    // Capturamos cualquier error de red o parseo y respondemos 200 con ok: false.
+    // Esto permite que el frontend distinga un fallo de la app (5xx) de un caso
+    // offline esperado (200 ok: false).
+    const motivo =
+      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Error desconocido';
+    return c.json(
+      {
+        ok: false,
+        mensaje: `No se pudo sincronizar con CFE: ${motivo}`,
+      },
+      200
+    );
+  }
 });
 
 // ─────────────────────────────────────────────────────────
@@ -142,19 +273,72 @@ cfeRatesRoutes.get('/aplicables', zValidator('query', aplicablesSchema), async (
 
   const mesInicioVerano = localidad?.mesInicioVerano ?? null;
 
+  /**
+   * Escalones más recientes publicados para una tarifa y temporada, sin exigir
+   * un periodo concreto.
+   *
+   * Es el respaldo que hace que cotizar sea instantáneo y no dependa de tener
+   * descargado el histórico mes a mes: CFE no publica todos los periodos para
+   * todas las temporadas (un mes de verano suele traer solo cuotas `summer`),
+   * y un historial de consumo se remonta un año atrás. Para una cotización
+   * interesa además el precio **vigente**, que es el que pagará el cliente de
+   * aquí en adelante, no el de hace catorce meses.
+   */
+  async function ultimosEscalones(season: string) {
+    const reciente = await prisma.cfeTariffRate.findFirst({
+      where: { tariffCode: tarifa, season },
+      orderBy: [{ year: 'desc' }, { month: 'desc' }],
+    });
+    if (!reciente) return null;
+
+    const escalones = await prisma.cfeTariffRate.findMany({
+      where: { tariffCode: tarifa, season, year: reciente.year, month: reciente.month },
+      orderBy: { tierIndex: 'asc' },
+    });
+    return escalones.length > 0 ? { escalones, year: reciente.year, month: reciente.month } : null;
+  }
+
   const resultados = await Promise.all(
     periodos.map(async ({ year, month }) => {
       // Sin `mesInicioVerano` no hay forma de saber la temporada: se asume
       // fuera de verano, que es el juego de cuotas común a todas las tarifas.
       const season = mesInicioVerano === null ? 'non_summer' : seasonFor(mesInicioVerano, month);
-      const escalones = await prisma.cfeTariffRate.findMany({
+
+      const exactos = await prisma.cfeTariffRate.findMany({
         where: { tariffCode: tarifa, year, month, season },
         orderBy: { tierIndex: 'asc' },
       });
-      return { year, month, season, escalones, disponible: escalones.length > 0 };
+      if (exactos.length > 0) {
+        return { year, month, season, escalones: exactos, disponible: true, exacto: true, origen: { year, month, season } };
+      }
+
+      // Sin cuotas para ese periodo exacto: se usan las últimas publicadas.
+      // Se prueba primero la temporada que toca y luego la otra, porque un mes
+      // de verano puede no tener cuotas `non_summer` publicadas en absoluto.
+      const otra = season === 'summer' ? 'non_summer' : 'summer';
+      const respaldo = (await ultimosEscalones(season)) ?? (await ultimosEscalones(otra));
+      if (!respaldo) {
+        return { year, month, season, escalones: [], disponible: false, exacto: false, origen: null };
+      }
+
+      return {
+        year,
+        month,
+        season,
+        escalones: respaldo.escalones,
+        disponible: true,
+        exacto: false,
+        origen: { year: respaldo.year, month: respaldo.month, season: respaldo.escalones[0]?.season ?? season },
+      };
     })
   );
 
-  // `completo: false` NO es un error: el frontend avisa de "cálculo aproximado".
-  return c.json({ tarifa, mesInicioVerano, periodos: resultados, completo: resultados.every((r) => r.disponible) });
+  return c.json({
+    tarifa,
+    mesInicioVerano,
+    periodos: resultados,
+    // `completo` sigue significando "cuotas del periodo exacto", no "hay
+    // número": el frontend lo usa para avisar de que el cálculo es aproximado.
+    completo: resultados.every((r) => r.exacto),
+  });
 });

@@ -5,15 +5,27 @@ export interface ConsumoPeriodo {
   pago: string;
 }
 
+/**
+ * Panel tal como lo consume el wizard. `precioUnitario` es imprescindible:
+ * lo usan la recomendación de paquetes (para estimar la inversión) y la
+ * cotización del Paso 4 (para el costo base de los conceptos). Antes se
+ * descartaba al mapear la respuesta de la API, y el Paso 4 acabó cotizando
+ * con un precio fijo escrito a mano en `page.tsx`, ignorando el catálogo.
+ */
 export interface PanelData {
+  clave: string;
   nombre: string;
   watts: number;
   factorBifacial: number;
+  precioUnitario: number;
 }
 
+/** Inversor del wizard. Mismo motivo que `PanelData` para `precioUnitario`. */
 export interface InversorData {
+  clave: string;
   nombre: string;
   wattsMax: number;
+  precioUnitario: number;
 }
 
 export interface PasoWizard {

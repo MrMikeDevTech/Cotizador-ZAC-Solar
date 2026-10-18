@@ -262,7 +262,19 @@ ipcMain.handle("generar-pdf", async (_event, payload: GenerarPdfPayload) => {
     await ventana.loadURL(resolveImprimirUrl(payload.tipo, payload.proyectoId));
     await esperarListoParaImprimir(ventana);
 
-    const pdfBuffer = await ventana.webContents.printToPDF({});
+    // `printBackground: true` es imprescindible: por defecto Chromium
+    // descarta fondos y bordes de color al imprimir, y el documento saldría
+    // sin el azul corporativo ni las bandas de las tablas.
+    //
+    // Los márgenes van en 0 a propósito: el espacio en blanco lo controla el
+    // propio documento desde CSS (`@page` en globals.css), que es donde se
+    // puede ajustar sin recompilar Electron.
+    const pdfBuffer = await ventana.webContents.printToPDF({
+      printBackground: true,
+      pageSize: "Letter",
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      preferCSSPageSize: true,
+    });
 
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: "Guardar documento",

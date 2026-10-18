@@ -92,7 +92,10 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     const data: any = await res.json();
     assert.equal(data.paneles.length, 6);
     assert.equal(data.inversores.length, 14);
-    assert.equal(data.empresa.nombre, 'Energy Sun');
+    // La empresa NO se siembra: una cotización no puede salir a nombre de
+    // una empresa que el usuario nunca capturó. Llega `null` hasta que se
+    // llenan los datos en Configuración → Formato de Cotización.
+    assert.equal(data.empresa, null);
     assert.deepEqual(data.factores.factoresEstacionales, [1.10, 0.97, 0.88, 1.00, 0.89, 1.10]);
   });
 

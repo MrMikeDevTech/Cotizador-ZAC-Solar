@@ -159,6 +159,42 @@ describe('Rutas de agenda, reportes, historial de cotizaciones y tarifas aplicab
     assert.equal(datos.periodos[0].escalones[0].tierIndex, 0, 'los escalones vienen ordenados');
   });
 
+  test('GET /api/cfe-rates/aplicables cae a los últimos precios publicados cuando falta el periodo exacto', async () => {
+    // Caso real que rompía el Paso 2: la localidad resuelve 'non_summer' para
+    // un mes del que CFE solo publicó cuotas 'summer'. Antes eso daba
+    // `disponible: false` y la fila se quedaba sin calcular; ahora se usan las
+    // últimas cuotas conocidas, que es lo que interesa para cotizar.
+    //
+    // Siembra propia con una tarifa aparte para no depender del orden de los
+    // tests ni de lo que hayan dejado otros.
+    await prisma.cfeTariffRate.createMany({
+      data: [
+        { tariffCode: '1F', year: 2026, month: 8, season: 'summer', tierIndex: 0, concept: 'Consumo básico', price: 0.8, description: 'primeros 100', limitKwh: 100 },
+        { tariffCode: '1F', year: 2026, month: 8, season: 'summer', tierIndex: 1, concept: 'Consumo excedente', price: 3.1, description: 'adicional', limitKwh: null },
+      ],
+    });
+
+    const periodos = encodeURIComponent(JSON.stringify([{ year: 2024, month: 2 }]));
+    const res = await req(`/api/cfe-rates/aplicables?tarifa=1F&localidadId=${localidadId}&periodos=${periodos}`);
+    assert.equal(res.status, 200);
+
+    const datos: any = await res.json();
+    const periodo = datos.periodos[0];
+    assert.equal(periodo.disponible, true, 'debe dar precios aunque el mes exacto no exista');
+    assert.equal(periodo.exacto, false, 'y debe declarar que no son los de ese mes');
+    assert.equal(periodo.escalones.length, 2);
+    assert.equal(periodo.origen.year, 2026, 'informa de qué periodo salieron');
+    assert.equal(periodo.origen.month, 8);
+
+    // Se cruzó de temporada a propósito: se pidió 'non_summer' (febrero sin
+    // mesInicioVerano no es verano) y solo hay cuotas 'summer' publicadas.
+    assert.equal(periodo.season, 'non_summer');
+
+    // `completo` sigue significando "cuotas del mes exacto", para que el
+    // frontend pueda avisar de que el cálculo es aproximado.
+    assert.equal(datos.completo, false);
+  });
+
   test('GET /api/cfe-rates/aplicables con tarifa DAC usa la región de la localidad', async () => {
     await prisma.cfeDacRate.create({
       data: { year: 2026, month: 7, region: 'Central', cargoFijo: 142.25, precioKwh: 6.529, precioKwhVerano: null },

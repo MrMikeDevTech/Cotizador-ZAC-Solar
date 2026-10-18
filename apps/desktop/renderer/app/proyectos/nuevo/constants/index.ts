@@ -1,3 +1,4 @@
+import { PANELES_INICIALES, INVERSORES_INICIALES } from '@cotizador/shared';
 import { PanelData, InversorData, PasoWizard, EstructuraInstalacion, ConceptoCotizacion } from '../types';
 
 export const PASOS_PROYECTO: PasoWizard[] = [
@@ -42,31 +43,21 @@ export const limitesDACTarifas: Record<string, number | null> = {
   'APBT': null,
 };
 
-export const panelesData: Record<string, PanelData> = {
-  'canadian_620_base': { nombre: 'Canadian Solar, CS6.2-66TB-620- sin % add.', watts: 620, factorBifacial: 1.0 },
-  'canadian_620_bi10': { nombre: 'Canadian Solar, CS6.2-66TB-620- Bifacial al 10%.', watts: 620, factorBifacial: 1.10 },
-  'canadian_620_bi20': { nombre: 'Canadian Solar, CS6.2-66TB-620- Bifacial al 20%.', watts: 620, factorBifacial: 1.20 },
-  'jinko_615': { nombre: 'Jinko, JKM615N-78HL4-V.', watts: 615, factorBifacial: 1.0 },
-  'jinko_620': { nombre: 'Jinko, 620W-66HL4M-BDV- sin % add.', watts: 620, factorBifacial: 1.0 },
-  'trina_620': { nombre: 'TRINA, 620-TSM-NEG19RC.20- sin %add.', watts: 620, factorBifacial: 1.0 },
-};
+/**
+ * Catálogo de respaldo, usado solo mientras `/api/config` no ha respondido.
+ *
+ * Se deriva de la misma semilla que siembra la base de datos
+ * (`PANELES_INICIALES` / `INVERSORES_INICIALES` de `@cotizador/shared`) en vez
+ * de repetir los literales: antes eran dos listas copiadas a mano que podían
+ * divergir en silencio, y la del wizard además había perdido `precioUnitario`.
+ */
+export const panelesData: Record<string, PanelData> = Object.fromEntries(
+  PANELES_INICIALES.map((p) => [p.clave, p])
+);
 
-export const inversoresData: Record<string, InversorData> = {
-  'growatt_10k_2020': { nombre: 'Growatt, MIN 10000 TL-X/2020', wattsMax: 14000 },
-  'growatt_2500': { nombre: 'Growatt, MIN 2500TL - X2', wattsMax: 3500 },
-  'growatt_3000': { nombre: 'Growatt, MIN 3000TL - X2', wattsMax: 4200 },
-  'growatt_3600': { nombre: 'Growatt, MIN 3600TL - X2', wattsMax: 4900 }, 
-  'growatt_4200': { nombre: 'Growatt, MIN 4200TL - X2', wattsMax: 5800 },
-  'growatt_4600': { nombre: 'Growatt, MIN 4600TL - X2', wattsMax: 6400 },
-  'growatt_5000': { nombre: 'Growatt, MIN 5000TL - X2', wattsMax: 7000 },
-  'growatt_6000': { nombre: 'Growatt, MIN 6000TL - X2', wattsMax: 8400 },
-  'growatt_7000': { nombre: 'Growatt, MIN 7000TL - X2', wattsMax: 9800 },
-  'growatt_8000': { nombre: 'Growatt, MIN 8000TL - X2', wattsMax: 11200 },
-  'growatt_9000': { nombre: 'Growatt, MIN 9000TL - X2', wattsMax: 12600 },
-  'growatt_10k_x2': { nombre: 'Growatt, MIN 10000TL - X2', wattsMax: 14000 },
-  'growatt_mic_3300': { nombre: 'Growatt, MIC 3300TL - X2', wattsMax: 4600 },
-  'growatt_neo_2500m': { nombre: 'Growatt, NEO 2500M - X2', wattsMax: 3500 },
-};
+export const inversoresData: Record<string, InversorData> = Object.fromEntries(
+  INVERSORES_INICIALES.map((inv) => [inv.clave, inv])
+);
 
 export const PAGO_MINIMO_CFE = 60;
 
@@ -87,11 +78,4 @@ export const CONCEPTOS_COTIZACION_DEFECTO: ConceptoCotizacion[] = [
   { id: '4', concepto: 'Mano de obra', costoBase: 3600, margenPorcentaje: 0 },
 ];
 
-export const DATOS_EMPRESA_DEFECTO = {
-  nombre: 'Energy Sun',
-  telefono: '322 123 4567',
-  localidad: 'Puerto Vallarta, Jalisco',
-  email: 'contacto@energysun.com',
-  descripcion: 'Descripción de la empresa vendedora y detalles adicionales del distribuidor.',
-};
 

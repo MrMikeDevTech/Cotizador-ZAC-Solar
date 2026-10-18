@@ -226,15 +226,6 @@ export default function AccionesProyecto({
             <li>
               <button
                 type="button"
-                onClick={() => setMensajeDocumento('La actualización de suministrador se gestiona desde el CRM.')}
-                className="hover:text-teal-600 text-left transition-colors cursor-pointer"
-              >
-                Actualizar Suministrador
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
                 onClick={() => generarPdf('contrato', `contrato-${nombreProyecto ?? 'proyecto'}`)}
                 disabled={generando === 'contrato'}
                 className="hover:text-teal-600 text-left transition-colors cursor-pointer disabled:opacity-50"
@@ -323,7 +314,11 @@ export default function AccionesProyecto({
             disabled={guardando}
             className="bg-[#8cc63f] text-white px-8 py-3 rounded-full text-sm font-bold shadow-md hover:bg-green-600 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {guardando ? 'Guardando…' : 'Crear Proyecto'}
+            {guardando
+              ? 'Guardando…'
+              : proyectoId
+                ? 'Guardar Proyecto'
+                : 'Crear Proyecto'}
           </button>
         </div>
       </div>

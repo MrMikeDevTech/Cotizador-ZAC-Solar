@@ -21,6 +21,7 @@ const ENLACES_CRM: EnlaceNav[] = [
 const ENLACES_CONFIGURACION: EnlaceNav[] = [
   { href: '/config/catalogo', etiqueta: 'Catálogo' },
   { href: '/config/utilidad', etiqueta: 'Utilidad' },
+  { href: '/config/precios-kwh', etiqueta: 'Precios de kWh' },
   { href: '/config/cotizacion', etiqueta: 'Formato de Cotización' },
   { href: '/config/historial', etiqueta: 'Historial de cotizaciones' },
 ];
