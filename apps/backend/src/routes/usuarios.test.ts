@@ -73,6 +73,155 @@ describe('Rutas de usuarios (CRM)', () => {
     assert.ok(guardado.passwordHash.length > 32);
   });
 
+  test('el correo se guarda en minúsculas y sin espacios, y no admite duplicados por mayúsculas', async () => {
+    const crear = (email: string) =>
+      req('/api/usuarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, nombre: 'Mayus', password: 'clave-de-prueba-123' }),
+      });
+    const res = await crear('  Mayus@ZacSolar.MX ');
+    assert.equal(res.status, 201);
+    assert.equal(((await res.json()) as any).email, 'mayus@zacsolar.mx');
+    assert.equal((await crear('MAYUS@zacsolar.mx')).status, 409);
+
+    // Y el login funciona con cualquier capitalización.
+    const login = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: ' MAYUS@ZACSOLAR.MX', password: 'clave-de-prueba-123' }),
+    });
+    assert.equal(login.status, 200);
+  });
+
+  test('POST /:id/password: el admin cambia la clave de otro, que cierra sus sesiones', async () => {
+    const { usuario, headers } = await crearUsuarioNormal('olvidadizo@zacsolar.mx');
+    const cambiar = (id: string, passwordNueva: string, h = adminHeaders) =>
+      req(
+        `/api/usuarios/${id}/password`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ passwordNueva }) },
+        h
+      );
+
+    assert.equal((await cambiar(usuario.id, 'corta')).status, 400);
+    assert.equal((await cambiar(usuario.id, 'clave-nueva-456')).status, 204);
+
+    // La sesión vieja del usuario ya no sirve y la clave nueva sí inicia sesión.
+    assert.equal((await req('/api/auth/yo', {}, headers)).status, 401);
+    const login = await app.request('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'olvidadizo@zacsolar.mx', password: 'clave-nueva-456' }),
+    });
+    assert.equal(login.status, 200);
+
+    // Un usuario normal no puede, ni siquiera sobre sí mismo; un id inexistente da 404.
+    const { usuario: otro, headers: hOtro } = await crearUsuarioNormal('sin-permiso@zacsolar.mx');
+    assert.equal((await cambiar(otro.id, 'clave-nueva-456', hOtro)).status, 403);
+    assert.equal((await cambiar('no-existe', 'clave-nueva-456')).status, 404);
+  });
+
+  test('POST /:id/password sobre sí mismo conserva la sesión actual del admin', async () => {
+    const res = await req(`/api/usuarios/${adminId}/password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passwordNueva: 'otra-clave-admin-789' }),
+    });
+    assert.equal(res.status, 204);
+    assert.equal((await req('/api/auth/yo')).status, 200);
+  });
+
+  test('POST / sin contraseña crea el usuario con una aleatoria (alta rápida)', async () => {
+    const res = await req('/api/usuarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'sin-clave@zacsolar.mx', nombre: 'Sin Clave' }),
+    });
+    assert.equal(res.status, 201);
+    const guardado = await prisma.usuario.findUniqueOrThrow({ where: { email: 'sin-clave@zacsolar.mx' } });
+    assert.ok(guardado.passwordHash.length > 32);
+    assert.equal(guardado.rol, 'usuario');
+  });
+
+  describe('cambio rápido de cuenta', () => {
+    const json = { 'Content-Type': 'application/json' };
+
+    test('cambia a otro vendedor sin contraseña: token nuevo y el anterior queda cerrado', async () => {
+      const { usuario: destino } = await crearUsuarioNormal('destino-rapido@zacsolar.mx');
+      const { headers: origen } = await crearUsuarioNormal('origen-rapido@zacsolar.mx');
+
+      const res = await req(
+        '/api/auth/cambio-rapido',
+        { method: 'POST', headers: json, body: JSON.stringify({ usuarioId: destino.id }) },
+        origen
+      );
+      assert.equal(res.status, 200);
+      const cuerpo: any = await res.json();
+      assert.equal(cuerpo.usuario.id, destino.id);
+      assert.equal('passwordHash' in cuerpo.usuario, false);
+
+      const yo: any = await (await req('/api/auth/yo', {}, { Authorization: `Bearer ${cuerpo.token}` })).json();
+      assert.equal(yo.id, destino.id);
+      assert.equal((await req('/api/auth/yo', {}, origen)).status, 401);
+    });
+
+    test('rechaza usuarios inexistentes, inactivos o borrados, y exige sesión', async () => {
+      const { usuario: inactivo } = await crearUsuarioNormal('inactivo-rapido@zacsolar.mx');
+      await prisma.usuario.update({ where: { id: inactivo.id }, data: { activo: false } });
+      const { usuario: borrado } = await crearUsuarioNormal('borrado-rapido@zacsolar.mx');
+      await prisma.usuario.update({ where: { id: borrado.id }, data: { deletedAt: new Date() } });
+
+      for (const usuarioId of [inactivo.id, borrado.id, 'no-existe']) {
+        const res = await req('/api/auth/cambio-rapido', {
+          method: 'POST',
+          headers: json,
+          body: JSON.stringify({ usuarioId }),
+        });
+        assert.equal(res.status, 404, usuarioId);
+      }
+
+      const sinSesion = await app.request('/api/auth/cambio-rapido', {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ usuarioId: adminId }),
+      });
+      assert.equal(sinSesion.status, 401);
+    });
+
+    test('GET /vendedores lista solo activos, sin datos sensibles, también para un usuario normal', async () => {
+      const { headers } = await crearUsuarioNormal('lista-rapida@zacsolar.mx');
+      const res = await req('/api/auth/vendedores', {}, headers);
+      assert.equal(res.status, 200);
+      const lista: any[] = (await res.json()) as any[];
+      assert.ok(lista.some((u) => u.email === 'lista-rapida@zacsolar.mx'));
+      assert.ok(!lista.some((u) => u.email === 'inactivo-rapido@zacsolar.mx'));
+      for (const u of lista) assert.deepEqual(Object.keys(u).sort(), ['email', 'id', 'nombre', 'rol']);
+    });
+
+    test('POST /vendedores crea un usuario normal, entra como él y rechaza correos repetidos', async () => {
+      const { headers } = await crearUsuarioNormal('quien-agrega@zacsolar.mx');
+      const { headers: otraSesion } = await crearUsuarioNormal('quien-agrega-2@zacsolar.mx');
+      const crear = (email: string, h = headers) =>
+        req(
+          '/api/auth/vendedores',
+          { method: 'POST', headers: json, body: JSON.stringify({ nombre: 'Vendedor Nuevo', email }) },
+          h
+        );
+
+      const res = await crear(' Nuevo.Vendedor@ZacSolar.mx ');
+      assert.equal(res.status, 201);
+      const cuerpo: any = await res.json();
+      assert.equal(cuerpo.usuario.email, 'nuevo.vendedor@zacsolar.mx');
+      assert.equal(cuerpo.usuario.rol, 'usuario');
+
+      const yo: any = await (await req('/api/auth/yo', {}, { Authorization: `Bearer ${cuerpo.token}` })).json();
+      assert.equal(yo.email, 'nuevo.vendedor@zacsolar.mx');
+      // La alta cerró la sesión de quien la hizo, como un cambio de cuenta.
+      assert.equal((await req('/api/auth/yo', {}, headers)).status, 401);
+      assert.equal((await crear('nuevo.vendedor@zacsolar.mx', otraSesion)).status, 409);
+    });
+  });
+
   test('un usuario sin rol admin no puede crear usuarios', async () => {
     const { headers } = await crearUsuarioNormal('normal1@zacsolar.mx');
     const res = await req(

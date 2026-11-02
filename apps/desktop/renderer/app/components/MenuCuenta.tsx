@@ -2,9 +2,18 @@
 
 import { useEffect, useRef, useState, type FocusEvent } from 'react';
 import Link from 'next/link';
-import { User, LogOut, ChevronDown } from 'lucide-react';
+import { User, LogOut, ChevronDown, Plus, Check } from 'lucide-react';
 import { Icono } from './Icono';
 import { useSesion } from '../../lib/SesionContext';
+import { api } from '../../lib/api';
+import { ModalAgregarVendedor } from './ModalAgregarVendedor';
+
+interface Vendedor {
+  id: string;
+  nombre: string;
+  email: string;
+  rol: string;
+}
 
 const ETIQUETAS_ROL: Record<string, string> = {
   admin: 'Administrador',
@@ -16,16 +25,35 @@ function etiquetaRol(rol: string): string {
 }
 
 /**
- * Reemplaza a `UserSelector`: ya no permite "ser" cualquier usuario del
- * sistema con un clic, muestra el usuario con sesión iniciada y da acceso a
- * "Mi cuenta" y "Cerrar sesión". Mismo patrón de apertura/cierre que los
- * desplegables de `NavPrincipal` (clic, Escape, clic fuera).
+ * Badge del vendedor actual. Al abrirlo lista a los vendedores registrados y
+ * permite cambiar de cuenta con un clic (sin contraseña, pensado para una laptop
+ * de oficina compartida), agregar uno nuevo, abrir "Mi cuenta" o cerrar sesión.
+ * Mismo patrón de apertura/cierre que los desplegables de `NavPrincipal`
+ * (clic, Escape, clic fuera).
  */
 export function MenuCuenta() {
-  const { usuario, cerrarSesion } = useSesion();
+  const { usuario, cerrarSesion, cambiarDeCuenta, agregarVendedor } = useSesion();
   const [abierto, setAbierto] = useState(false);
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [cambiandoA, setCambiandoA] = useState<string | null>(null);
+  const [errorCambio, setErrorCambio] = useState<string | null>(null);
+  const [modalAbierto, setModalAbierto] = useState(false);
   const [cerrando, setCerrando] = useState(false);
   const contenedorRef = useRef<HTMLDivElement>(null);
+
+  // La lista se pide cada vez que se abre: otro vendedor pudo darse de alta o desactivarse.
+  useEffect(() => {
+    if (!abierto) return;
+    let vigente = true;
+    setErrorCambio(null);
+    api
+      .get<Vendedor[]>('/api/auth/vendedores')
+      .then((lista) => vigente && setVendedores(lista))
+      .catch(() => vigente && setErrorCambio('No se pudo cargar la lista de vendedores.'));
+    return () => {
+      vigente = false;
+    };
+  }, [abierto]);
 
   useEffect(() => {
     if (!abierto) return;
@@ -66,6 +94,18 @@ export function MenuCuenta() {
     }
   };
 
+  const manejarCambio = async (id: string) => {
+    if (cambiandoA || id === usuario.id) return;
+    setCambiandoA(id);
+    setErrorCambio(null);
+    try {
+      await cambiarDeCuenta(id);
+    } catch {
+      setErrorCambio('No se pudo cambiar de cuenta.');
+      setCambiandoA(null);
+    }
+  };
+
   return (
     <div
       ref={contenedorRef}
@@ -94,11 +134,53 @@ export function MenuCuenta() {
       </button>
 
       {abierto && (
-        <div className="absolute right-0 top-full pt-1 w-48 z-50 animate-fade-in">
+        <div className="absolute right-0 top-full pt-1 w-64 z-50 animate-fade-in">
           <div className="bg-white text-gray-800 rounded-lg shadow-xl border border-gray-100 overflow-hidden">
             <div className="px-4 py-2.5 border-b border-gray-100">
               <p className="text-xs font-semibold text-[#00388d] truncate">{usuario.nombre}</p>
               <p className="text-[11px] text-gray-400 truncate">{usuario.email}</p>
+            </div>
+            <div className="border-b border-gray-100 py-1 max-h-56 overflow-y-auto">
+              <p className="px-4 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Vendedores
+              </p>
+              {vendedores.map((v) => {
+                const actual = v.id === usuario.id;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => manejarCambio(v.id)}
+                    disabled={cambiandoA !== null}
+                    aria-current={actual ? 'true' : undefined}
+                    className={`w-full flex items-center gap-2 px-4 py-2 text-xs text-left transition-colors cursor-pointer disabled:opacity-60 ${
+                      actual ? 'bg-blue-50 text-[#00388d] font-semibold' : 'hover:bg-blue-50'
+                    }`}
+                  >
+                    <span className="w-6 h-6 bg-orange-200 text-[#00388d] rounded-full flex items-center justify-center font-bold text-[10px] shrink-0">
+                      {v.nombre.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="flex-1 truncate">
+                      {v.nombre}
+                      {v.rol === 'admin' && <span className="ml-1 text-[10px] text-gray-400">(admin)</span>}
+                    </span>
+                    {actual && <Icono icon={Check} size={14} />}
+                    {cambiandoA === v.id && <span className="text-[10px] text-gray-400">Entrando…</span>}
+                  </button>
+                );
+              })}
+              {errorCambio && <p className="px-4 py-1 text-[11px] text-red-500">{errorCambio}</p>}
+              <button
+                type="button"
+                onClick={() => {
+                  setAbierto(false);
+                  setModalAbierto(true);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-xs text-[#00388d] font-semibold hover:bg-blue-50 transition-colors text-left cursor-pointer"
+              >
+                <Icono icon={Plus} size={14} />
+                Agregar Vendedor
+              </button>
             </div>
             <Link
               href="/cuenta"
@@ -119,6 +201,10 @@ export function MenuCuenta() {
             </button>
           </div>
         </div>
+      )}
+
+      {modalAbierto && (
+        <ModalAgregarVendedor onCancelar={() => setModalAbierto(false)} onCrear={agregarVendedor} />
       )}
     </div>
   );

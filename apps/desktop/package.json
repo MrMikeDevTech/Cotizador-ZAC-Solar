@@ -7,7 +7,7 @@
   "type": "module",
   "main": "electron/dist/main.js",
   "scripts": {
-    "build:electron": "cd ../.. && bun build apps/desktop/electron/main.ts apps/desktop/electron/preload.ts --target=node --format=esm --outdir=apps/desktop/electron/dist --external=electron --external=better-sqlite3 --external=@prisma/client --external=@prisma/adapter-better-sqlite3 --external=@hyzyla/pdfium --external=tesseract.js --external=unpdf --external=pngjs",
+    "build:electron": "cd ../.. && bun build apps/desktop/electron/main.ts --target=node --format=esm --outdir=apps/desktop/electron/dist --external=electron --external=better-sqlite3 --external=@prisma/client --external=@prisma/adapter-better-sqlite3 --external=@hyzyla/pdfium --external=tesseract.js --external=unpdf --external=pngjs && bun build apps/desktop/electron/preload.ts --target=node --format=cjs --external=electron --outfile=apps/desktop/electron/dist/preload.cjs",
     "start": "bun run build:electron && electron .",
     "dist": "bun run build:electron && node scripts/verificar-empaquetado.mjs && electron-builder --config electron-builder.yml"
   },

@@ -211,6 +211,43 @@ export default function Paso4OtrosCargos({
     );
   };
 
+  // Opciones avanzadas: el asesor puede pisar el precio base de un concepto. Se
+  // vuelve a calcular solo si cambia el equipo o la cantidad de paneles.
+  const handleCostoBaseChange = (id: string, nuevoCostoBase: number): void => {
+    setConceptos((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, costoBase: Math.max(0, Number.isFinite(nuevoCostoBase) ? nuevoCostoBase : 0) } : item
+      )
+    );
+  };
+
+  // Los cargos adicionales: precio y borrado desde la tarjeta "Cargos"; costo base y
+  // margen (como un concepto más) desde la tabla en Opciones avanzadas.
+  const actualizarCargo = (id: string, cambios: Partial<CargoEditable>): void => {
+    setCargosEditables((prev) => prev.map((cargo) => (cargo.id === id ? { ...cargo, ...cambios } : cargo)));
+  };
+  const numeroSeguro = (valor: number): number => (Number.isFinite(valor) ? valor : 0);
+
+  const handleCargoMontoChange = (id: string, nuevoMonto: number): void => {
+    actualizarCargo(id, { monto: Math.max(0, numeroSeguro(nuevoMonto)) });
+  };
+
+  const handleCargoMargenPorcentajeChange = (id: string, nuevoMargen: number): void => {
+    actualizarCargo(id, { margenPorcentaje: numeroSeguro(nuevoMargen) });
+  };
+
+  const handleCargoMargenMXNChange = (id: string, nuevoMargenMXN: number): void => {
+    const cargo = cargosEditables.find((c) => c.id === id);
+    if (!cargo) return;
+    actualizarCargo(id, {
+      margenPorcentaje: cargo.monto > 0 ? (numeroSeguro(nuevoMargenMXN) / cargo.monto) * 100 : 0,
+    });
+  };
+
+  const handleCargoEliminar = (id: string): void => {
+    setCargosEditables((prev) => prev.filter((cargo) => cargo.id !== id));
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pt-2">
       {/* --- BOTONES ACCIONES SUPERIORES --- */}
@@ -292,6 +329,9 @@ export default function Paso4OtrosCargos({
             estructuraSeleccionadaId={estructuraSeleccionadaId}
             onToggleEstructura={handleToggleEstructura}
             onAbrirModalCargos={() => setModalCargosOpen(true)}
+            cargosEditables={cargosEditables}
+            onCargoMontoChange={handleCargoMontoChange}
+            onCargoEliminar={handleCargoEliminar}
           />
         </div>
 
@@ -316,6 +356,10 @@ export default function Paso4OtrosCargos({
             porcentajeUtilidadTotal={porcentajeUtilidadTotal}
             onMargenPorcentajeChange={handleMargenPorcentajeChange}
             onMargenMXNChange={handleMargenMXNChange}
+            onCostoBaseChange={handleCostoBaseChange}
+            onCargoCostoBaseChange={handleCargoMontoChange}
+            onCargoMargenPorcentajeChange={handleCargoMargenPorcentajeChange}
+            onCargoMargenMXNChange={handleCargoMargenMXNChange}
           />
         </div>
       </div>

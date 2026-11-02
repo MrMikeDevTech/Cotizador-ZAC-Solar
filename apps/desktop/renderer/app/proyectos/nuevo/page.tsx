@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import {
   Stepper,
@@ -15,6 +15,7 @@ import {
   DatosContacto,
   CargoEditable,
   ConceptoCotizacion,
+  EstructuraInstalacion,
   MetodoPrecio,
   TipoMoneda,
 } from './types';
@@ -35,11 +36,12 @@ import { api } from '../../../lib/api';
 import CargarReciboCfe from './components/CargarReciboCfe';
 import { construirAutocompletado, type PlanAutocompletado } from './utils/autocompletarRecibo';
 import { etiquetasDePeriodo } from './utils/periodos';
+import { esConceptoDeInversores, esConceptoDePaneles, precioBasePorPanel } from './utils/conceptosEquipo';
 import { useGuardarProyecto } from './hooks/useGuardarProyecto';
 import { useTarifasCfe } from './hooks/useTarifasCfe';
 
 export default function NuevoProyecto() {
-  const { paneles, inversores, estructuras, factores, tarifas, localidades } = useConfiguracion();
+  const { paneles, inversores, estructuras: estructurasCatalogo, factores, tarifas, localidades } = useConfiguracion();
 
   // --- CONTROL DE PASO ---
   const [pasoActivo, setPasoActivo] = useState(1);
@@ -158,6 +160,23 @@ export default function NuevoProyecto() {
 
   const [conceptos, setConceptos] = useState<ConceptoCotizacion[]>(CONCEPTOS_COTIZACION_DEFECTO);
 
+  // Firma del equipo con el que se guardó el proyecto abierto; `null` en uno nuevo.
+  const equipoGuardadoRef = useRef<string | null>(null);
+  const ultimaFirmaCostosRef = useRef<string | null>(null);
+
+  // Estructura de la cotización guardada, con el precio de entonces. El catálogo puede
+  // haber cambiado (o haberla quitado) desde que se cotizó; ese precio es el que manda.
+  const [estructuraGuardada, setEstructuraGuardada] = useState<EstructuraInstalacion | null>(null);
+  const estructuras = useMemo(() => {
+    if (!estructuraGuardada) return estructurasCatalogo;
+    const hayEnCatalogo = estructurasCatalogo.some((e) => e.id === estructuraGuardada.id);
+    return hayEnCatalogo
+      ? estructurasCatalogo.map((e) =>
+          e.id === estructuraGuardada.id ? { ...e, precio: estructuraGuardada.precio } : e
+        )
+      : [...estructurasCatalogo, estructuraGuardada];
+  }, [estructurasCatalogo, estructuraGuardada]);
+
   // Costo de paneles e inversores según el equipo elegido en el Paso 3.
   //
   // Antes aquí había dos precios escritos a mano (4400 y 13500) que coincidían
@@ -166,19 +185,46 @@ export default function NuevoProyecto() {
   // seguía usando el valor viejo. Ahora se toma `precioUnitario` del catálogo
   // real, que es también el que usa la recomendación del Paso 3 — si no
   // coincidieran, las tarjetas dirían un número y la cotización otro.
+  //
+  // Los dos conceptos se reconocen por su id de plantilla ('1' y '2', proyecto
+  // nuevo) o por su nombre (proyecto reabierto: ahí los ids son los de la base).
+  //
+  // Un proyecto reabierto conserva los costos con los que se cotizó: mientras el
+  // equipo y las cantidades sigan siendo los guardados (`equipoGuardadoRef`) no se
+  // recalcula nada, ni al abrirlo ni cuando el catálogo se revalida. En cuanto el
+  // asesor cambia modelo o cantidad, se recalcula con el catálogo vigente.
   useEffect(() => {
     const numPaneles = Number(cantPaneles) || 0;
     const numInversores = Number(cantInversores) || 0;
+
+    const firmaEquipo = `${panelKey}|${numPaneles}|${inversorKey}|${numInversores}`;
+    if (equipoGuardadoRef.current !== null) {
+      if (equipoGuardadoRef.current === firmaEquipo) return;
+      equipoGuardadoRef.current = null;
+    }
+
     const precioPanel = paneles[panelKey]?.precioUnitario ?? 0;
     const precioInversor = inversores[inversorKey]?.precioUnitario ?? 0;
 
+    // Solo se recalcula cuando cambia el equipo, la cantidad o un precio del catálogo.
+    // Si no, cada revalidación del catálogo (al volver a la ventana) pisaría los
+    // costos que el asesor ajustó a mano en las opciones avanzadas del Paso 4.
+    const firma = `${firmaEquipo}|${precioPanel}|${precioInversor}`;
+    if (ultimaFirmaCostosRef.current === firma) return;
+    ultimaFirmaCostosRef.current = firma;
+
     setConceptos((prev) => {
       const siguiente = prev.map((c) => {
-        if (c.id === '1' && numPaneles > 0 && precioPanel > 0) {
+        if (esConceptoDePaneles(c) && numPaneles > 0 && precioPanel > 0) {
           return { ...c, costoBase: numPaneles * precioPanel };
         }
-        if (c.id === '2' && numInversores > 0 && precioInversor > 0) {
+        if (esConceptoDeInversores(c) && numInversores > 0 && precioInversor > 0) {
           return { ...c, costoBase: numInversores * precioInversor };
+        }
+        // Material eléctrico, mano de obra y estructura de aluminio: precio por panel × paneles.
+        const porPanel = precioBasePorPanel(c);
+        if (porPanel !== null && numPaneles > 0) {
+          return { ...c, costoBase: numPaneles * porPanel };
         }
         return c;
       });
@@ -188,6 +234,14 @@ export default function NuevoProyecto() {
       return siguiente.some((c, i) => c.costoBase !== prev[i]?.costoBase) ? siguiente : prev;
     });
   }, [cantPaneles, cantInversores, panelKey, inversorKey, paneles, inversores]);
+
+  // Si el asesor elige otra estructura, el precio congelado de la anterior deja de
+  // aplicar (el backend tampoco lo conserva: solo lo hace mientras sea la misma).
+  useEffect(() => {
+    if (estructuraGuardada && estructuraSeleccionadaId !== estructuraGuardada.id) {
+      setEstructuraGuardada(null);
+    }
+  }, [estructuraGuardada, estructuraSeleccionadaId]);
 
   // Cálculos dinámicos de cotización compartidos entre Paso 4 y Paso 5
   const estructuraActual = useMemo(
@@ -451,6 +505,14 @@ export default function NuevoProyecto() {
 
         const cotizacion = proyecto.cotizaciones[0];
         if (cotizacion) {
+          equipoGuardadoRef.current = `${cotizacion.panelClave}|${Number(cotizacion.cantPaneles) || 0}|${cotizacion.inversorClave}|${Number(cotizacion.cantInversores) || 0}`;
+          if (cotizacion.estructuraId) {
+            setEstructuraGuardada({
+              id: cotizacion.estructuraId,
+              nombre: cotizacion.estructuraNombre,
+              precio: cotizacion.estructuraPrecio,
+            });
+          }
           setPanelKey(cotizacion.panelClave);
           setCantPaneles(cotizacion.cantPaneles);
           setInversorKey(cotizacion.inversorClave);
@@ -466,7 +528,7 @@ export default function NuevoProyecto() {
           setOcultarDesglose(cotizacion.ocultarDesglose);
           setDescuento5(cotizacion.descuento5);
           setDescuento10(cotizacion.descuento10);
-          setCargosEditables(cotizacion.cargos.map((c: any) => ({ id: c.id, nombre: c.nombre, monto: c.monto })));
+          setCargosEditables(cotizacion.cargos.map((c: any) => ({ id: c.id, nombre: c.nombre, monto: c.monto, margenPorcentaje: c.margenPorcentaje ?? 0 })));
           setConceptos(
             cotizacion.conceptos.map((c: any) => ({
               id: c.id,

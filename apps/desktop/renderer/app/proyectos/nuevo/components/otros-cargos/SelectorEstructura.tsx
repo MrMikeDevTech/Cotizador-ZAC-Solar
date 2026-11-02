@@ -1,12 +1,17 @@
 'use client';
 
-import { EstructuraInstalacion } from '../../types';
+import { Trash2 } from 'lucide-react';
+import { Icono } from '../../../../components/Icono';
+import { CargoEditable, EstructuraInstalacion } from '../../types';
 
 interface SelectorEstructuraProps {
   estructuras: EstructuraInstalacion[];
   estructuraSeleccionadaId: string | null;
   onToggleEstructura: (id: string) => void;
   onAbrirModalCargos: () => void;
+  cargosEditables?: CargoEditable[];
+  onCargoMontoChange?: (id: string, nuevoMonto: number) => void;
+  onCargoEliminar?: (id: string) => void;
 }
 
 export default function SelectorEstructura({
@@ -14,6 +19,9 @@ export default function SelectorEstructura({
   estructuraSeleccionadaId,
   onToggleEstructura,
   onAbrirModalCargos,
+  cargosEditables = [],
+  onCargoMontoChange,
+  onCargoEliminar,
 }: SelectorEstructuraProps) {
   return (
     <div className="space-y-5">
@@ -43,6 +51,38 @@ export default function SelectorEstructura({
       {/* 2. CARGOS */}
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm min-h-[100px]">
         <h4 className="font-bold text-gray-700 mb-2 text-xs uppercase tracking-wider">Cargos</h4>
+        {cargosEditables.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">Sin cargos adicionales. Usa «+» para agregar.</p>
+        ) : (
+          <ul className="space-y-2">
+            {cargosEditables.map((cargo) => (
+              <li key={cargo.id} className="flex items-center gap-2 text-xs text-gray-700">
+                <span className="flex-1 truncate font-medium" title={cargo.nombre}>
+                  {cargo.nombre || 'Otro cargo'}
+                </span>
+                <span className="text-gray-400">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0"
+                  aria-label={`Precio de ${cargo.nombre || 'otro cargo'} (MXN)`}
+                  value={cargo.monto || ''}
+                  onChange={(e) => onCargoMontoChange?.(cargo.id, Number(e.target.value))}
+                  className="w-24 border border-gray-300 rounded p-1 text-xs text-right focus:outline-[#00388d] bg-white font-semibold"
+                />
+                <button
+                  type="button"
+                  onClick={() => onCargoEliminar?.(cargo.id)}
+                  aria-label={`Eliminar el cargo ${cargo.nombre || 'sin nombre'}`}
+                  title="Eliminar cargo"
+                  className="text-gray-400 hover:text-red-500 px-1 cursor-pointer"
+                >
+                  <Icono icon={Trash2} size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* 3. CARGOS EDITABLES */}

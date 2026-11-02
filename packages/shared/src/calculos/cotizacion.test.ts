@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { calcularTotalesCotizacion, convertirMoneda } from './cotizacion.ts';
+import { calcularTotalesCotizacion, convertirMoneda, totalDeCargo } from './cotizacion.ts';
 import type { ConceptoCotizacion, CargoEditable } from '../types/dominio.ts';
 
 // Fixture real de nuevo/pruebas/page.tsx — debe dar granTotal = 69220
@@ -97,5 +97,36 @@ describe('convertirMoneda', () => {
   });
   test('USD divide entre el tipo de cambio', () => {
     expect(convertirMoneda(1690, 'USD', 16.9)).toBeCloseTo(100, 5);
+  });
+});
+
+describe('cargos adicionales con margen', () => {
+  const entrada = (cargosEditables: CargoEditable[]) =>
+    calcularTotalesCotizacion({
+      conceptos: [{ id: '1', concepto: 'x', costoBase: 1000, margenPorcentaje: 10 }],
+      cargosEditables,
+      precioEstructura: 0,
+      descuento5: false,
+      descuento10: false,
+      incluirIva: false,
+      ivaPorcentaje: 16,
+    });
+
+  test('un cargo suma costo base + margen, igual que un concepto', () => {
+    const r = entrada([{ id: 'a', nombre: 'Flete', monto: 500, margenPorcentaje: 20 }]);
+    expect(totalDeCargo({ monto: 500, margenPorcentaje: 20 })).toBe(600);
+    expect(r.subtotalCargosEditables).toBe(600);
+    expect(r.granTotal).toBe(1100 + 600);
+  });
+
+  test('sin margen definido el cargo vale su monto (cotizaciones anteriores)', () => {
+    const r = entrada([{ id: 'a', nombre: 'Flete', monto: 500 }]);
+    expect(r.subtotalCargosEditables).toBe(500);
+  });
+
+  test('la utilidad total incluye el margen de los cargos', () => {
+    const r = entrada([{ id: 'a', nombre: 'Flete', monto: 500, margenPorcentaje: 20 }]);
+    expect(r.utilidadTotalMXN).toBe(100 + 100);
+    expect(r.porcentajeUtilidadTotal).toBeCloseTo((200 / 1700) * 100, 6);
   });
 });

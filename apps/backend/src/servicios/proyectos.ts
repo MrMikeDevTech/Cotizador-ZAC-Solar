@@ -84,7 +84,17 @@ async function resolverContacto(
   return contacto.id;
 }
 
-async function construirSnapshotCotizacion(tx: Cliente, payload: GuardarProyectoInput) {
+/**
+ * `estructuraCongelada`: id y precio de la estructura de la cotización vigente. Si
+ * el payload sigue apuntando a esa misma estructura se conserva **su precio de
+ * entonces** en vez del del catálogo: re-guardar un proyecto no debe cambiar el
+ * total porque el catálogo se actualizó después.
+ */
+async function construirSnapshotCotizacion(
+  tx: Cliente,
+  payload: GuardarProyectoInput,
+  estructuraCongelada?: { id: string; precio: number } | null
+) {
   const factoresRaw = await tx.factoresCalculo.findUnique({ where: { id: '1' } });
   if (!factoresRaw) throw new ErrorApi('SIN_CONFIGURAR', 'Los factores de cálculo no están configurados', 500);
   const factores = { ...factoresRaw, factoresEstacionales: JSON.parse(factoresRaw.factoresEstacionales) as number[] };
@@ -99,6 +109,11 @@ async function construirSnapshotCotizacion(tx: Cliente, payload: GuardarProyecto
     ? await tx.estructura.findUnique({ where: { id: payload.otrosCargos.estructuraId } })
     : null;
 
+  const precioEstructuraAplicado =
+    estructuraCongelada && estructura && estructura.id === estructuraCongelada.id
+      ? estructuraCongelada.precio
+      : (estructura?.precio ?? 0);
+
   const { consumoPromedioKwh, pagoPromedioCFE } = calcularPromedios(payload.datosProyecto.consumos);
 
   const dimensionamiento = calcularDimensionamiento({
@@ -112,7 +127,7 @@ async function construirSnapshotCotizacion(tx: Cliente, payload: GuardarProyecto
   const totales = calcularTotalesCotizacion({
     conceptos: payload.otrosCargos.conceptos,
     cargosEditables: payload.otrosCargos.cargosEditables,
-    precioEstructura: estructura?.precio ?? 0,
+    precioEstructura: precioEstructuraAplicado,
     descuento5: payload.otrosCargos.descuento5,
     descuento10: payload.otrosCargos.descuento10,
     incluirIva: payload.otrosCargos.incluirIva,
@@ -137,6 +152,7 @@ async function construirSnapshotCotizacion(tx: Cliente, payload: GuardarProyecto
     panel,
     inversor,
     estructura,
+    precioEstructuraAplicado,
     consumoPromedioKwh,
     pagoPromedioCFE,
     dimensionamiento,
@@ -171,7 +187,18 @@ export async function guardarProyecto(
     }
 
     const contactoId = await resolverContacto(tx, payload, existente?.contactoId);
-    const snapshot = await construirSnapshotCotizacion(tx, payload);
+    const vigente = existente
+      ? await tx.cotizacion.findFirst({
+          where: { proyectoId: existente.id },
+          orderBy: { version: 'desc' },
+          select: { estructuraId: true, estructuraPrecio: true },
+        })
+      : null;
+    const snapshot = await construirSnapshotCotizacion(
+      tx,
+      payload,
+      vigente?.estructuraId ? { id: vigente.estructuraId, precio: vigente.estructuraPrecio } : null
+    );
     const fase = await resolverFase(tx, payload.faseSlug);
 
     const datosProyecto = {
@@ -243,7 +270,7 @@ export async function guardarProyecto(
         tipoEquipoInversor: payload.equipo.tipoEquipoInversor,
         estructuraId: snapshot.estructura?.id,
         estructuraNombre: snapshot.estructura?.nombre ?? '',
-        estructuraPrecio: snapshot.estructura?.precio ?? 0,
+        estructuraPrecio: snapshot.estructura ? snapshot.precioEstructuraAplicado : 0,
         tamanoSistemaW: snapshot.dimensionamiento.tamanoSistema,
         produccionPeriodo: snapshot.dimensionamiento.produccion,
         autoconsumoPct: snapshot.dimensionamiento.autoconsumo,
@@ -281,6 +308,7 @@ export async function guardarProyecto(
           create: payload.otrosCargos.cargosEditables.map((cargo, orden) => ({
             nombre: cargo.nombre,
             monto: cargo.monto,
+            margenPorcentaje: cargo.margenPorcentaje,
             orden,
           })),
         },

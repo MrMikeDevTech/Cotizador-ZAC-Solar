@@ -322,7 +322,9 @@ model CotizacionCargo {
   cotizacionId String
   cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
   nombre       String
+  /// Costo base del cargo; el total suma `margenPorcentaje`.
   monto        Float
+  margenPorcentaje Float  @default(0)
   orden        Int        @default(0)
 }
 

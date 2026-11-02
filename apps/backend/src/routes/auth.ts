@@ -6,6 +6,7 @@ import { ErrorApi, NoEncontradoError } from '../errores.ts';
 import type { VariablesApp } from '../tipos.ts';
 import {
   generarHash,
+  generarPasswordAleatoria,
   verificarPassword,
   simularVerificacionPassword,
   crearSesion,
@@ -42,7 +43,7 @@ authRoutes.get('/estado', async (c) => {
 });
 
 const primerAdminSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   nombre: z.string().min(1, 'El nombre es requerido'),
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
 });
@@ -72,7 +73,7 @@ authRoutes.post('/primer-admin', zValidator('json', primerAdminSchema), async (c
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   password: z.string().min(1, 'La contraseña es requerida'),
 });
 
@@ -131,10 +132,92 @@ authRoutes.get('/yo', async (c) => {
   return c.json(c.get('usuario'));
 });
 
+// ─────────────────────────────────────────────────────────
+// Cambio rápido de cuenta (laptop de oficina compartida, sin red).
+//
+// Pensado para que varios vendedores usen la misma computadora sin teclear
+// contraseña. Es una decisión de producto: **cualquiera con una sesión abierta
+// puede entrar como cualquier otro usuario activo, administradores incluidos**.
+// Sigue exigiendo una sesión válida (no es una ruta pública), así que quien no
+// ha iniciado sesión en el equipo no puede usarla.
+// ─────────────────────────────────────────────────────────
+
+function respuestaSesion(token: string, usuario: { id: string; nombre: string; email: string; rol: string }) {
+  return { token, usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol } };
+}
+
+/** Vendedores entre los que se puede cambiar: todos los usuarios activos y no borrados. */
+authRoutes.get('/vendedores', async (c) => {
+  const prisma = c.get('prisma');
+  const usuarios = await prisma.usuario.findMany({
+    where: { activo: true, deletedAt: null },
+    orderBy: { nombre: 'asc' },
+    select: { id: true, nombre: true, email: true, rol: true },
+  });
+  return c.json(usuarios);
+});
+
+const cambioRapidoSchema = z.object({ usuarioId: z.string().min(1, 'usuarioId es requerido') });
+
+authRoutes.post('/cambio-rapido', zValidator('json', cambioRapidoSchema), async (c) => {
+  const prisma = c.get('prisma');
+  const { usuarioId } = c.req.valid('json');
+
+  const destino = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+  if (!destino || destino.deletedAt || !destino.activo) {
+    throw new ErrorApi('USUARIO_NO_DISPONIBLE', 'Ese usuario no existe o está inactivo', 404);
+  }
+
+  const tokenAnterior = obtenerToken(c);
+  const token = await prisma.$transaction(async (tx) => {
+    await limpiarSesionesExpiradas(tx, destino.id);
+    const nuevo = await crearSesion(tx, destino.id);
+    // El cambio equivale a cerrar la sesión anterior y abrir otra: no se acumulan tokens.
+    if (tokenAnterior) await invalidarSesion(tx, tokenAnterior);
+    return nuevo;
+  });
+  await prisma.usuario.update({ where: { id: destino.id }, data: { ultimoAcceso: new Date() } });
+
+  return c.json(respuestaSesion(token, destino));
+});
+
+const nuevoVendedorSchema = z.object({
+  nombre: z.string().trim().min(1, 'El nombre es requerido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
+});
+
+/**
+ * Alta rápida desde el selector: crea un usuario con rol `usuario` y entra como él.
+ * No necesita contraseña (se genera una aleatoria que nadie conoce; un admin puede
+ * fijar una real con `POST /api/usuarios/:id/password`). Nunca crea administradores.
+ */
+authRoutes.post('/vendedores', zValidator('json', nuevoVendedorSchema), async (c) => {
+  const prisma = c.get('prisma');
+  const { nombre, email } = c.req.valid('json');
+
+  if (await prisma.usuario.findUnique({ where: { email } })) {
+    throw new ErrorApi('EMAIL_EN_USO', 'Ya existe otro usuario con ese email', 409);
+  }
+
+  const { salt, hash } = await generarHash(generarPasswordAleatoria());
+  const tokenAnterior = obtenerToken(c);
+
+  const { usuario, token } = await prisma.$transaction(async (tx) => {
+    const creado = await tx.usuario.create({
+      data: { email, nombre, passwordHash: hash, salt, rol: 'usuario' },
+    });
+    const nuevo = await crearSesion(tx, creado.id);
+    if (tokenAnterior) await invalidarSesion(tx, tokenAnterior);
+    return { usuario: creado, token: nuevo };
+  });
+
+  return c.json(respuestaSesion(token, usuario), 201);
+});
+
 const actualizarYoSchema = z
   .object({
     nombre: z.string().min(1, 'El nombre no puede quedar vacío').optional(),
-    email: z.string().email('Email inválido').optional(),
+    email: z.string().trim().toLowerCase().email('Email inválido').optional(),
   })
   .refine((datos) => datos.nombre !== undefined || datos.email !== undefined, {
     message: 'Debes incluir al menos nombre o email',

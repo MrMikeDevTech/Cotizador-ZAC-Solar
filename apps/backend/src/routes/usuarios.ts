@@ -6,10 +6,13 @@ import { ErrorApi, NoEncontradoError } from '../errores.ts';
 import type { VariablesApp } from '../tipos.ts';
 import {
   generarHash,
+  generarPasswordAleatoria,
   aUsuarioSesion,
   desactivarUsuario,
   borrarUsuario,
   cambiarRolUsuario,
+  hashearToken,
+  invalidarOtrasSesiones,
 } from '../servicios/auth.ts';
 
 export const usuariosRoutes = new Hono<{ Variables: VariablesApp }>();
@@ -26,15 +29,16 @@ const soloAdmin: MiddlewareHandler<{ Variables: VariablesApp }> = async (c, next
 usuariosRoutes.use('*', soloAdmin);
 
 const crearUsuarioSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().toLowerCase().email('Email inválido'),
   nombre: z.string().min(1, 'El nombre es requerido'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  /** Opcional: sin ella se genera una aleatoria (alta rápida); luego se fija con `POST /:id/password`. */
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').optional(),
   rol: z.enum(['admin', 'usuario']).default('usuario'),
 });
 
 const actualizarUsuarioSchema = z.object({
   nombre: z.string().min(1).optional(),
-  email: z.string().email('Email inválido').optional(),
+  email: z.string().trim().toLowerCase().email('Email inválido').optional(),
   rol: z.enum(['admin', 'usuario']).optional(),
   activo: z.boolean().optional(),
 });
@@ -58,7 +62,7 @@ usuariosRoutes.post('/', zValidator('json', crearUsuarioSchema), async (c) => {
     throw new ErrorApi('EMAIL_EN_USO', 'Ya existe otro usuario con ese email', 409);
   }
 
-  const { salt, hash } = await generarHash(datos.password);
+  const { salt, hash } = await generarHash(datos.password ?? generarPasswordAleatoria());
   const usuario = await prisma.usuario.create({
     data: { email: datos.email, nombre: datos.nombre, passwordHash: hash, salt, rol: datos.rol },
   });
@@ -105,6 +109,38 @@ usuariosRoutes.patch('/:id', zValidator('json', actualizarUsuarioSchema), async 
   const actualizado = await prisma.usuario.findUnique({ where: { id: usuarioId } });
   if (!actualizado) throw new NoEncontradoError('Usuario');
   return c.json(aUsuarioSesion(actualizado));
+});
+
+const restablecerPasswordSchema = z.object({
+  passwordNueva: z.string().min(8, 'La contraseña nueva debe tener al menos 8 caracteres'),
+});
+
+/**
+ * El admin fija una contraseña nueva para cualquier usuario (el propio incluido),
+ * sin pedir la anterior: es la salida cuando alguien la olvidó. Se cierran las
+ * sesiones abiertas de ese usuario; si el admin se la cambia a sí mismo conserva
+ * la sesión desde la que lo hace.
+ */
+usuariosRoutes.post('/:id/password', zValidator('json', restablecerPasswordSchema), async (c) => {
+  const prisma = c.get('prisma');
+  const solicitante = c.get('usuario');
+  const usuarioId = c.req.param('id');
+
+  const existente = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+  if (!existente || existente.deletedAt) throw new NoEncontradoError('Usuario');
+
+  const { salt, hash } = await generarHash(c.req.valid('json').passwordNueva);
+  await prisma.usuario.update({ where: { id: usuarioId }, data: { passwordHash: hash, salt } });
+
+  const header = c.req.header('Authorization');
+  const tokenActual = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  await invalidarOtrasSesiones(
+    prisma,
+    usuarioId,
+    solicitante.id === usuarioId && tokenActual ? hashearToken(tokenActual) : undefined
+  );
+
+  return c.body(null, 204);
 });
 
 usuariosRoutes.delete('/:id', async (c) => {

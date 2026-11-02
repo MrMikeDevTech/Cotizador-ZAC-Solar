@@ -202,6 +202,23 @@ describe('construirCotizacionPdf — invariante de suma', () => {
   });
 });
 
+describe('construirCotizacionPdf — cargos con margen', () => {
+  test('el cargo se imprime con su margen incluido y la suma sigue cuadrando', () => {
+    const cotizacion = cotizacionBase({
+      conceptos: [{ concepto: 'Precio de paneles', costoBase: 1000, margenPorcentaje: 0, orden: 0 }],
+      estructuraPrecio: 0,
+      cargos: [{ nombre: 'Flete', monto: 500, margenPorcentaje: 20, orden: 0 }],
+      subtotalGeneral: 1600,
+      subtotalConDescuento: 1600,
+      granTotal: 1600,
+    });
+    const resultado = construirCotizacionPdf(entradaBase({ proyecto: proyectoBase(cotizacion) }));
+    const flete = resultado.lineas.find((l) => l.descripcion === 'Flete');
+    expect(flete?.importe).toBe(600);
+    expect(Math.round(sumaLineas(resultado.lineas) * 100) / 100).toBe(1600);
+  });
+});
+
 describe('construirCotizacionPdf — cantidades heurísticas', () => {
   test('la línea de paneles usa cantPaneles y menciona la marca', () => {
     const resultado = construirCotizacionPdf(entradaBase());

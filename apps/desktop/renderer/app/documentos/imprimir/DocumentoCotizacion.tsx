@@ -125,13 +125,20 @@ export function DocumentoCotizacion({ datos }: { datos: DatosCotizacionPdf }) {
                   <div className="total-valor">{formatearMXN(datos.total)}</div>
                 </div>
 
-                {hayFirma && (
+                <div className="firmas">
+                  {hayFirma && (
+                    <div className="firma">
+                      <div className="linea" />
+                      <div className="nombre">{datos.firmaNombre}</div>
+                      <div>{datos.firmaPuesto}</div>
+                    </div>
+                  )}
                   <div className="firma">
                     <div className="linea" />
-                    <div className="nombre">{datos.firmaNombre}</div>
-                    <div>{datos.firmaPuesto}</div>
+                    <div className="nombre">{datos.cliente}</div>
+                    <div>Cliente</div>
                   </div>
-                )}
+                </div>
               </>
             )}
           </div>
@@ -277,7 +284,7 @@ const CSS_PLANTILLA = `
   .datos td.valor { text-align: center; }
 
   .intro {
-    margin: 14px 0 12px;
+    margin: 18px 0 16px;
     font-size: 11pt;
     line-height: 1.3;
   }
@@ -313,7 +320,7 @@ const CSS_PLANTILLA = `
     display: grid;
     grid-template-columns: 1fr 13% 16%;
     align-items: start;
-    margin-top: 6px;
+    margin-top: 10px;
   }
   .observaciones h3 {
     font-family: 'Oswald', 'Arial Narrow', sans-serif;
@@ -340,16 +347,26 @@ const CSS_PLANTILLA = `
     font-size: 10pt;
   }
 
+  /* Firma del vendedor y del cliente, lado a lado y del mismo tamaño.
+     0.95in arriba (antes 0.55in): +38px de aire entre el TOTAL y las firmas. */
+  .firmas {
+    display: flex;
+    justify-content: center;
+    gap: 0.4in;
+    margin: 0.95in auto 0;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
   .firma {
-    margin: 0.55in auto 0;
-    width: 3.6in;
+    flex: 1 1 0;
+    max-width: 3.4in;
     text-align: center;
     font-size: 11pt;
     line-height: 1.35;
   }
   .firma .linea {
     border-top: 3px solid #222;
-    width: 2.8in;
+    width: 90%;
     margin: 0 auto 6px;
   }
   .firma .nombre { text-transform: uppercase; }

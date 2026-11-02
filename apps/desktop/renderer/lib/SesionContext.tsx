@@ -30,6 +30,10 @@ interface ValorSesion {
   iniciarSesion: (email: string, password: string) => Promise<void>;
   cerrarSesion: () => Promise<void>;
   actualizarUsuario: (usuario: UsuarioSesion) => void;
+  /** Entra como otro vendedor sin contraseña (laptop compartida). */
+  cambiarDeCuenta: (usuarioId: string) => Promise<void>;
+  /** Crea un vendedor (rol usuario) y entra como él. */
+  agregarVendedor: (nombre: string, email: string) => Promise<void>;
 }
 
 const SesionContext = createContext<ValorSesion>({
@@ -38,6 +42,8 @@ const SesionContext = createContext<ValorSesion>({
   iniciarSesion: async () => {},
   cerrarSesion: async () => {},
   actualizarUsuario: () => {},
+  cambiarDeCuenta: async () => {},
+  agregarVendedor: async () => {},
 });
 
 export function SesionProvider({ children }: { children: ReactNode }) {
@@ -103,8 +109,45 @@ export function SesionProvider({ children }: { children: ReactNode }) {
     setUsuario(datos);
   }, []);
 
+  /**
+   * El backend cierra la sesión anterior y devuelve un token nuevo. Se guarda con
+   * `guardarToken` (archivo de Electron o localStorage). Después se recarga la
+   * pantalla: catálogos, proyecto abierto y demás estado en memoria son de la
+   * cuenta anterior y mezclarlos con la nueva sería peor que perder un borrador.
+   */
+  const adoptarSesion = useCallback(async (respuesta: RespuestaLogin) => {
+    sesionLimpiadaRef.current = false;
+    await guardarToken(respuesta.token);
+    setUsuario(respuesta.usuario);
+    window.location.assign('/');
+  }, []);
+
+  const cambiarDeCuenta = useCallback(
+    async (usuarioId: string) => {
+      await adoptarSesion(await api.post<RespuestaLogin>('/api/auth/cambio-rapido', { usuarioId }));
+    },
+    [adoptarSesion]
+  );
+
+  const agregarVendedor = useCallback(
+    async (nombre: string, email: string) => {
+      await adoptarSesion(await api.post<RespuestaLogin>('/api/auth/vendedores', { nombre, email }));
+    },
+    [adoptarSesion]
+  );
+
   return (
-    <SesionContext.Provider value={{ usuario, cargando, iniciarSesion, cerrarSesion, actualizarUsuario }}>
+    <SesionContext.Provider
+      value={{
+        usuario,
+        cargando,
+        iniciarSesion,
+        cerrarSesion,
+        actualizarUsuario,
+        cambiarDeCuenta,
+        agregarVendedor,
+      }}
+    >
       {children}
     </SesionContext.Provider>
   );

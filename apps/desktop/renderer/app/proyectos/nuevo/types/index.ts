@@ -70,7 +70,9 @@ export interface EstructuraInstalacion {
 export interface CargoEditable {
   id: string;
   nombre: string;
+  /** Costo base; el total suma el margen. */
   monto: number;
+  margenPorcentaje?: number;
 }
 
 export interface ConceptoCotizacion {

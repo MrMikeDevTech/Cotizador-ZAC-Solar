@@ -1,6 +1,6 @@
 import { METODO_PAGO_POR_DEFECTO } from '../constants/metodosPago.ts';
 import { normalizarTipoEquipoInversor } from '../schemas/proyecto.ts';
-import { calcularPorcentajeDescuento } from './cotizacion.ts';
+import { calcularPorcentajeDescuento, totalDeCargo } from './cotizacion.ts';
 import type {
   DatosCotizacionPdf,
   EmpresaPdf,
@@ -39,7 +39,9 @@ interface ConceptoCotizacionPdf {
 
 interface CargoCotizacionPdf {
   nombre: string;
+  /** Costo base; el importe impreso suma `margenPorcentaje`. */
   monto: number;
+  margenPorcentaje?: number;
   orden: number;
 }
 
@@ -211,7 +213,7 @@ function construirLineasDesglosadas(cotizacion: CotizacionCotizable): LineaCotiz
   const cargosOrdenados = [...cotizacion.cargos].sort((a, b) => a.orden - b.orden);
   for (const cargo of cargosOrdenados) {
     if (cargo.monto > 0) {
-      lineas.push({ descripcion: cargo.nombre, cantidad: 1, importe: redondear2(cargo.monto) });
+      lineas.push({ descripcion: cargo.nombre, cantidad: 1, importe: redondear2(totalDeCargo(cargo)) });
     }
   }
 

@@ -115,7 +115,7 @@ describe('pie de contacto', () => {
     const { empresa } = construir();
     expect(empresa.nombre).toBe('ZAC Solar');
     expect(empresa.direccion).toBe('Zacualpan, Nayarit');
-    expect(empresa.telefono).toBe('311-246-8439 / 322-201-3424');
+    expect(empresa.telefono).toBe('327-110-5784 / 327-112-8421');
   });
 
   test('con empresa configurada manda lo capturado; los campos vacíos caen al defecto', () => {
@@ -139,7 +139,7 @@ describe('pie de contacto', () => {
       nombre: 'Solar del Norte',
       correo: 'hola@solar.mx',
       direccion: 'Tepic, Nayarit',
-      telefono: '311-246-8439 / 322-201-3424',
+      telefono: '327-110-5784 / 327-112-8421',
     });
   });
 });

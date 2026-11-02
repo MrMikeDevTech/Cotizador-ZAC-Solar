@@ -36,6 +36,7 @@ export { calcularPromedios, calcularDimensionamiento } from './calculos/dimensio
 export type { Promedios, EntradaDimensionamiento, ResultadoDimensionamiento } from './calculos/dimensionamiento.ts';
 export {
   calcularTotalesCotizacion,
+  totalDeCargo,
   convertirMoneda,
   calcularPorcentajeDescuento,
   aplicarDescuento,

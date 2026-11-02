@@ -34,7 +34,7 @@ const ANIOS_PROYECCION = 5;
 const EMPRESA_POR_DEFECTO = {
   nombre: 'ZAC Solar',
   direccion: 'Zacualpan, Nayarit',
-  telefono: '311-246-8439 / 322-201-3424',
+  telefono: '327-110-5784 / 327-112-8421',
 };
 
 /** Consumo de una fila tal como lo entrega el proyecto hidratado (numérico). */

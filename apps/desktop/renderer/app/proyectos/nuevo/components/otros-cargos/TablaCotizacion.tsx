@@ -3,7 +3,7 @@
 import { ChevronRight } from 'lucide-react';
 import { Icono } from '../../../../components/Icono';
 import { ConceptoCotizacion, EstructuraInstalacion, CargoEditable, TipoMoneda } from '../../types';
-import { convertirMoneda } from '@cotizador/shared';
+import { convertirMoneda, totalDeCargo } from '@cotizador/shared';
 
 interface TablaCotizacionProps {
   conceptos: ConceptoCotizacion[];
@@ -24,6 +24,12 @@ interface TablaCotizacionProps {
   porcentajeUtilidadTotal: number;
   onMargenPorcentajeChange: (id: string, nuevoMargen: number) => void;
   onMargenMXNChange: (id: string, nuevoMargenMXN: number) => void;
+  /** Opciones avanzadas: sobrescribe el costo base (precio base) de un concepto. */
+  onCostoBaseChange?: (id: string, nuevoCostoBase: number) => void;
+  /** Opciones avanzadas: un cargo adicional se edita igual que un concepto. */
+  onCargoCostoBaseChange?: (id: string, nuevoCostoBase: number) => void;
+  onCargoMargenPorcentajeChange?: (id: string, nuevoMargen: number) => void;
+  onCargoMargenMXNChange?: (id: string, nuevoMargenMXN: number) => void;
 }
 
 export default function TablaCotizacion({
@@ -45,6 +51,10 @@ export default function TablaCotizacion({
   porcentajeUtilidadTotal,
   onMargenPorcentajeChange,
   onMargenMXNChange,
+  onCostoBaseChange,
+  onCargoCostoBaseChange,
+  onCargoMargenPorcentajeChange,
+  onCargoMargenMXNChange,
 }: TablaCotizacionProps) {
   const formatCurrency = (val: number): string => {
     const convertido = convertirMoneda(val, tipoMoneda, valorDolar);
@@ -75,6 +85,7 @@ export default function TablaCotizacion({
                 <th className="py-2 font-bold">CONCEPTO</th>
                 {opcionesAvanzadas && (
                   <>
+                    <th className="py-2 text-right font-bold">COSTO BASE</th>
                     <th className="py-2 text-center font-bold">% MARGEN</th>
                     <th className="py-2 text-right font-bold">MARGEN MXN</th>
                   </>
@@ -88,6 +99,19 @@ export default function TablaCotizacion({
                   <td className="py-3 text-gray-600">{item.concepto}</td>
                   {opcionesAvanzadas && (
                     <>
+                      <td className="py-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <span className="text-gray-400">$</span>
+                          <input
+                            type="number"
+                            min={0}
+                            aria-label={`Costo base de ${item.concepto}`}
+                            value={Number(item.costoBase.toFixed(2))}
+                            onChange={(e) => onCostoBaseChange?.(item.id, Number(e.target.value))}
+                            className="w-24 border border-gray-300 rounded p-1 text-xs text-right focus:outline-[#00388d] bg-white font-semibold text-gray-700"
+                          />
+                        </div>
+                      </td>
                       <td className="py-3 text-center">
                         <input
                           type="number"
@@ -128,6 +152,7 @@ export default function TablaCotizacion({
                     </td>
                     {opcionesAvanzadas && (
                       <>
+                        <td className="pt-3 pb-1 text-right text-gray-300">-</td>
                         <td className="pt-3 pb-1 text-center text-gray-300">-</td>
                         <td className="pt-3 pb-1 text-right text-gray-300">-</td>
                       </>
@@ -138,7 +163,7 @@ export default function TablaCotizacion({
                   </tr>
                   <tr>
                     <td
-                      colSpan={opcionesAvanzadas ? 4 : 2}
+                      colSpan={opcionesAvanzadas ? 5 : 2}
                       className="pb-3 pt-0 text-xs font-semibold text-gray-500 pl-3"
                     >
                       <span className="inline-flex items-center gap-1">
@@ -150,26 +175,57 @@ export default function TablaCotizacion({
                 </>
               )}
 
-              {/* CARGOS EDITABLES */}
-              {cargosEditables.map(
-                (cargo) =>
-                  cargo.monto > 0 && (
-                    <tr key={cargo.id}>
-                      <td className="py-3 font-semibold text-gray-600">
-                        {cargo.nombre || 'Otro cargo'}
-                      </td>
-                      {opcionesAvanzadas && (
-                        <>
-                          <td className="py-3 text-center text-gray-300">-</td>
-                          <td className="py-3 text-right text-gray-300">-</td>
-                        </>
-                      )}
-                      <td className="py-3 text-right font-bold text-gray-700">
-                        {formatCurrency(cargo.monto)}
-                      </td>
-                    </tr>
-                  )
-              )}
+              {/* CARGOS ADICIONALES: filas de concepto; los controles de precio y borrado
+                  viven en la tarjeta "Cargos" de la izquierda. */}
+              {cargosEditables.map((cargo) => {
+                const margen = cargo.margenPorcentaje ?? 0;
+                return (
+                  <tr key={cargo.id}>
+                    <td className="py-3 text-gray-600">{cargo.nombre || 'Otro cargo'}</td>
+                    {opcionesAvanzadas && (
+                      <>
+                        <td className="py-3 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <span className="text-gray-400">$</span>
+                            <input
+                              type="number"
+                              min={0}
+                              aria-label={`Costo base de ${cargo.nombre || 'otro cargo'}`}
+                              value={Number(cargo.monto.toFixed(2))}
+                              onChange={(e) => onCargoCostoBaseChange?.(cargo.id, Number(e.target.value))}
+                              className="w-24 border border-gray-300 rounded p-1 text-xs text-right focus:outline-[#00388d] bg-white font-semibold text-gray-700"
+                            />
+                          </div>
+                        </td>
+                        <td className="py-3 text-center">
+                          <input
+                            type="number"
+                            aria-label={`Margen de ${cargo.nombre || 'otro cargo'} (%)`}
+                            value={Number(margen.toFixed(2))}
+                            onChange={(e) => onCargoMargenPorcentajeChange?.(cargo.id, Number(e.target.value))}
+                            className="w-16 border border-gray-300 rounded p-1 text-xs text-center focus:outline-[#00388d] bg-white font-semibold"
+                          />
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <span className="text-gray-400">$</span>
+                            <input
+                              type="number"
+                              aria-label={`Margen de ${cargo.nombre || 'otro cargo'} (MXN)`}
+                              value={Number((cargo.monto * (margen / 100)).toFixed(2))}
+                              onChange={(e) => onCargoMargenMXNChange?.(cargo.id, Number(e.target.value))}
+                              className="w-24 border border-gray-300 rounded p-1 text-xs text-right focus:outline-[#00388d] bg-white font-semibold text-gray-700"
+                            />
+                          </div>
+                        </td>
+                      </>
+                    )}
+                    <td className="py-3 text-right font-bold text-gray-700">
+                      {formatCurrency(totalDeCargo(cargo))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

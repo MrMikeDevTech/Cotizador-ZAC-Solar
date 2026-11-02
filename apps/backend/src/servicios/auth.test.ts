@@ -82,6 +82,28 @@ describe('servicios/auth', () => {
     assert.equal(resultado?.id, usuario.id);
   });
 
+  test('una sesión con 29 días restantes se renueva a un año al usarla; la efímera de 60 s no', async () => {
+    const { createHash } = await import('node:crypto');
+    const hashDe = (t: string) => createHash('sha256').update(t).digest('hex');
+    const usuario = await crearUsuario(prisma, { email: 'renovable@test.mx' });
+
+    // Sesión "vieja": le quedan 29 días (como las de 30 días de antes).
+    const token = await crearSesion(prisma, usuario.id);
+    await prisma.sesion.update({
+      where: { tokenHash: hashDe(token) },
+      data: { expiraEn: new Date(Date.now() + 29 * 86_400_000) },
+    });
+    assert.ok(await validarSesion(prisma, token));
+    const renovada = await prisma.sesion.findUniqueOrThrow({ where: { tokenHash: hashDe(token) } });
+    assert.ok(renovada.expiraEn.getTime() - Date.now() > 360 * 86_400_000, 'debe quedar ~1 año');
+
+    // Token efímero del render de PDF: no se extiende.
+    const efimero = await crearSesion(prisma, usuario.id, 60_000);
+    assert.ok(await validarSesion(prisma, efimero));
+    const intacta = await prisma.sesion.findUniqueOrThrow({ where: { tokenHash: hashDe(efimero) } });
+    assert.ok(intacta.expiraEn.getTime() - Date.now() <= 60_000);
+  });
+
   test('validarSesion rechaza una sesión expirada y la borra', async () => {
     const usuario = await crearUsuario(prisma, { email: 'sesion-expirada@test.mx' });
     const token = await crearSesion(prisma, usuario.id);

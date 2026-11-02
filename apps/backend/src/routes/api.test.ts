@@ -465,6 +465,37 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     assert.equal(inexistente.status, 404);
   });
 
+  test('El margen de un cargo adicional se guarda, entra al total y se recupera', async () => {
+    const base = payloadProyecto() as any;
+    const sinCargo = await (await req('/api/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(base),
+    })).json() as any;
+
+    const conCargo = await (await req('/api/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...base,
+        otrosCargos: {
+          ...base.otrosCargos,
+          cargosEditables: [{ id: 'x', nombre: 'Flete', monto: 500, margenPorcentaje: 20 }],
+        },
+      }),
+    })).json() as any;
+
+    assert.equal(conCargo.cotizaciones[0].cargos[0].margenPorcentaje, 20);
+    assert.equal(
+      Math.round((conCargo.cotizaciones[0].subtotalGeneral - sinCargo.cotizaciones[0].subtotalGeneral) * 100) / 100,
+      600
+    );
+
+    const recuperado: any = await (await req(`/api/proyectos/${conCargo.id}`)).json();
+    assert.equal(recuperado.cotizaciones[0].cargos[0].monto, 500);
+    assert.equal(recuperado.cotizaciones[0].cargos[0].margenPorcentaje, 20);
+  });
+
   test('Un proyecto guardado sin metodoPago devuelve "Contado"', async () => {
     const res = await req('/api/proyectos', {
       method: 'POST',

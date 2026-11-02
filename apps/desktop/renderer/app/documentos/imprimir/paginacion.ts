@@ -43,6 +43,15 @@
  * silencio mientras el TOTAL la seguiría sumando. Las páginas intermedias y
  * la última no llevan intro, así que no cambian.
  *
+ * ## Aire entre bloques (ajuste posterior)
+ *
+ * Para que las firmas no queden pegadas al TOTAL se sumaron 50px a las hojas con
+ * pie: +38px en el margen superior de `.firmas` (0.55in → 0.95in), +8px en
+ * `.intro` y +4px en `.pie-tabla`. Salen del margen de seguridad de arriba y del
+ * relleno inferior de `.hoja` (0.5in): la página única conserva ≈ 34px antes de
+ * tocar el borde de la hoja y la última de continuación, ≈ 54px. Si se añade más
+ * espacio fijo, hay que bajar las capacidades de arriba.
+ *
  * ## Cómo se reparte
  *
  * Es paginación "de flujo", igual que un procesador de texto: cada página se
