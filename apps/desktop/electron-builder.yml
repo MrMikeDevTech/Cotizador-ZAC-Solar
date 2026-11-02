@@ -19,10 +19,34 @@ files:
 extraResources:
   - from: ../backend/prisma/migrations
     to: backend-prisma-migrations
+  # Datos de idioma del OCR de recibos CFE (spa.traineddata). main.ts apunta
+  # TESSDATA_DIR a resources/tessdata; al ser un recurso va fuera del asar.
+  - from: ../backend/assets/tessdata
+    to: tessdata
+    filter:
+      - "**/*.traineddata"
 # better-sqlite3 es un módulo nativo: no puede vivir dentro del asar y debe
 # recompilarse contra el ABI de Electron (no el de Node/Bun usado en desarrollo).
 asarUnpack:
   - node_modules/better-sqlite3/**/*
+  # OCR de recibos CFE (lectura de PDF sin conexión). Todo es JS/WASM, pero el
+  # worker de tesseract.js (worker_threads) y los .wasm deben ser archivos reales
+  # y no entradas del asar. El worker se ejecuta desde la carpeta desempaquetada
+  # y resuelve sus dependencias desde ahí, así que se desempaqueta toda la
+  # cadena de tesseract.js, no solo el paquete.
+  - node_modules/tesseract.js/**/*
+  - node_modules/tesseract.js-core/**/*
+  - node_modules/@hyzyla/pdfium/**/*
+  - node_modules/bmp-js/**/*
+  - node_modules/idb-keyval/**/*
+  - node_modules/is-url/**/*
+  - node_modules/node-fetch/**/*
+  - node_modules/whatwg-url/**/*
+  - node_modules/tr46/**/*
+  - node_modules/webidl-conversions/**/*
+  - node_modules/regenerator-runtime/**/*
+  - node_modules/wasm-feature-detect/**/*
+  - node_modules/zlibjs/**/*
 npmRebuild: true
 win:
   target: nsis

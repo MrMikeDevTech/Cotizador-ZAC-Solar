@@ -23,15 +23,23 @@ import {
   calcularPromedios,
   calcularDimensionamiento,
   calcularTotalesCotizacion,
+  METODO_PAGO_POR_DEFECTO,
+  normalizarMetodoPago,
+  normalizarTipoEquipoInversor,
   recomendarPaquetes,
+  type ResultadoReciboCfe,
+  type TipoEquipoInversor,
 } from '@cotizador/shared';
 import { useConfiguracion } from '../../../lib/ConfiguracionContext';
 import { api } from '../../../lib/api';
+import CargarReciboCfe from './components/CargarReciboCfe';
+import { construirAutocompletado, type PlanAutocompletado } from './utils/autocompletarRecibo';
+import { etiquetasDePeriodo } from './utils/periodos';
 import { useGuardarProyecto } from './hooks/useGuardarProyecto';
 import { useTarifasCfe } from './hooks/useTarifasCfe';
 
 export default function NuevoProyecto() {
-  const { paneles, inversores, estructuras, factores, tarifas } = useConfiguracion();
+  const { paneles, inversores, estructuras, factores, tarifas, localidades } = useConfiguracion();
 
   // --- CONTROL DE PASO ---
   const [pasoActivo, setPasoActivo] = useState(1);
@@ -63,12 +71,21 @@ export default function NuevoProyecto() {
     setDatosContacto((prev) => ({ ...prev, ...nuevosDatos }));
   };
 
+  // Los campos del Paso 1 no son controlados (`defaultValue`), así que cambiar
+  // `datosContacto` desde fuera no los refresca. Subir este contador cambia la
+  // `key` de `Paso1Contacto`, lo remonta y lo hace releer los datos nuevos.
+  const [claveContacto, setClaveContacto] = useState(0);
+
   // --- ESTADOS PASO 2: CONSUMO ---
   const [nombreProyecto, setNombreProyecto] = useState('');
   const [localidadConsumo, setLocalidadConsumo] = useState('Nayarit - Compostela');
   const [hilos, setHilos] = useState('1 hilo');
   const [nombreRecibo, setNombreRecibo] = useState('');
   const [numeroServicio, setNumeroServicio] = useState('');
+  // Del recibo CFE; no tienen campo en el wizard, se editan en el modal de la Carta Poder.
+  const [direccion, setDireccion] = useState('');
+  const [codigoPostal, setCodigoPostal] = useState('');
+  const [numeroMedidor, setNumeroMedidor] = useState('');
   // 0 por defecto: el suministro eléctrico de uso **doméstico** (tarifas 1,
   // 1A-1F y DAC) no causa IVA. Con el 16 % que había antes, el pago calculado
   // salía un 16 % por encima del recibo real. Sigue siendo editable para los
@@ -97,6 +114,8 @@ export default function NuevoProyecto() {
   const [cantPaneles, setCantPaneles] = useState<number | ''>('');
   const [inversorKey, setInversorKey] = useState('');
   const [cantInversores, setCantInversores] = useState<number | ''>('');
+  // "Inversor" o "Microinversor": decide el texto de las garantías del PDF.
+  const [tipoEquipoInversor, setTipoEquipoInversor] = useState<TipoEquipoInversor>('Inversor');
 
   // Promedios calculados a partir de los consumos del Paso 2
   const { consumoPromedioKwh, pagoPromedioCFE } = useMemo(
@@ -125,7 +144,7 @@ export default function NuevoProyecto() {
   // --- ESTADOS PASO 4: OTROS CARGOS & COTIZACIÓN ---
   const [estructuraSeleccionadaId, setEstructuraSeleccionadaId] = useState<string | null>(null);
   const [metodoPrecio, setMetodoPrecio] = useState<MetodoPrecio>('unitario');
-  const [metodoPago, setMetodoPago] = useState<string>('Contado');
+  const [metodoPago, setMetodoPago] = useState<string>(METODO_PAGO_POR_DEFECTO);
   const [observaciones, setObservaciones] = useState<string>('');
   const [opcionesAvanzadas, setOpcionesAvanzadas] = useState<boolean>(false);
   const [incluirIva, setIncluirIva] = useState<boolean>(false);
@@ -255,6 +274,9 @@ export default function NuevoProyecto() {
     hilos,
     nombreRecibo,
     numeroServicio,
+    direccion,
+    codigoPostal,
+    numeroMedidor,
     ivaCFE,
     porcentajeDap,
     usarNuevaTarifa,
@@ -268,6 +290,7 @@ export default function NuevoProyecto() {
     cantPaneles,
     inversorKey,
     cantInversores,
+    tipoEquipoInversor,
     estructuraSeleccionadaId,
     metodoPrecio,
     metodoPago,
@@ -306,6 +329,65 @@ export default function NuevoProyecto() {
     }
   };
 
+  /**
+   * Vuelca en los Pasos 1 y 2 lo leído de un recibo CFE.
+   *
+   * Todos los `setX` van en un mismo manejador, así que React los aplica en un
+   * solo render; aun así el **orden** importa por los efectos de `Paso2Consumo`:
+   * - La tarifa se asigna después del checkbox de "tarifa nueva", que decide
+   *   qué lista de tarifas se ofrece.
+   * - `fechaInicio`, `fechaTexto` y `periodo` van antes que los consumos: al
+   *   cambiar fecha o periodo, el paso regenera las etiquetas de las 6 filas
+   *   conservando kWh y pago, de modo que los consumos se ponen sobre filas
+   *   que ya llevan sus etiquetas y nada los vuelve a tocar.
+   * - `calcularPagoAuto` se apaga: ese efecto sobrescribe el pago de cada fila
+   *   con la tarifa teórica, y lo que importa aquí es el importe real del recibo.
+   */
+  const handleReciboLeido = (resultado: ResultadoReciboCfe): PlanAutocompletado => {
+    const plan = construirAutocompletado(resultado, localidades);
+
+    // Paso 1
+    handleActualizarDatosContacto(plan.contacto);
+    setClaveContacto((clave) => clave + 1);
+
+    // Paso 2: identificación del servicio
+    setNombreProyecto(plan.nombreProyecto);
+    setNombreRecibo(plan.nombreRecibo);
+    setNumeroServicio(plan.numeroServicio);
+    setDireccion(plan.direccion);
+    setCodigoPostal(plan.codigoPostal);
+    setNumeroMedidor(plan.numeroMedidor);
+    if (plan.hilos) setHilos(plan.hilos);
+    if (plan.localidadConsumo) setLocalidadConsumo(plan.localidadConsumo);
+    if (plan.usarNuevaTarifa !== null && plan.tarifa) {
+      setUsarNuevaTarifa(plan.usarNuevaTarifa);
+      setTarifaSeleccionada(plan.tarifa);
+    }
+
+    // Paso 2: fechas y periodo primero, consumos después
+    const periodoFinal = plan.periodo ?? periodo;
+    if (plan.fechaInicio && plan.fechaTexto) {
+      setFechaInicio(plan.fechaInicio);
+      setFechaTexto(plan.fechaTexto);
+    }
+    if (plan.periodo) setPeriodo(plan.periodo);
+
+    setCalcularPagoAuto(false);
+    if (plan.consumos.length > 0) {
+      setConsumos((prev) =>
+        prev.map((fila, i) => {
+          const consumo = plan.consumos[i];
+          // Las filas que el recibo no trajo se limpian, para no mezclar datos de dos recibos.
+          const datosFila = consumo ?? { kwh: '', pago: '' };
+          const etiquetas = plan.fechaInicio ? etiquetasDePeriodo(plan.fechaInicio, periodoFinal, i) : null;
+          return { ...fila, ...etiquetas, ...datosFila };
+        })
+      );
+    }
+
+    return plan;
+  };
+
   // --- REHIDRATACIÓN DE UN PROYECTO EXISTENTE (?id=) ---
   useEffect(() => {
     const idProyecto = new URLSearchParams(window.location.search).get('id');
@@ -341,6 +423,9 @@ export default function NuevoProyecto() {
         setHilos(proyecto.hilos);
         setNombreRecibo(proyecto.nombreRecibo);
         setNumeroServicio(proyecto.numeroServicio);
+        setDireccion(proyecto.direccion ?? '');
+        setCodigoPostal(proyecto.codigoPostal ?? '');
+        setNumeroMedidor(proyecto.numeroMedidor ?? '');
         setIvaCFE(proyecto.ivaCfe);
         setPorcentajeDap(proyecto.porcentajeDap);
         setUsarNuevaTarifa(proyecto.usarNuevaTarifa);
@@ -370,9 +455,10 @@ export default function NuevoProyecto() {
           setCantPaneles(cotizacion.cantPaneles);
           setInversorKey(cotizacion.inversorClave);
           setCantInversores(cotizacion.cantInversores);
+          setTipoEquipoInversor(normalizarTipoEquipoInversor(cotizacion.tipoEquipoInversor));
           setEstructuraSeleccionadaId(cotizacion.estructuraId);
           setMetodoPrecio(cotizacion.metodoPrecio);
-          setMetodoPago(cotizacion.metodoPago ?? 'Contado');
+          setMetodoPago(normalizarMetodoPago(cotizacion.metodoPago));
           setObservaciones(cotizacion.observaciones ?? '');
           setIncluirIva(cotizacion.incluirIva);
           setTipoMoneda(cotizacion.tipoMoneda);
@@ -413,13 +499,19 @@ export default function NuevoProyecto() {
 
         {/* --- PASO 1: CONTACTO --- */}
         {pasoActivo === 1 && (
-          <Paso1Contacto
-            datosContacto={datosContacto}
-            onActualizarDatos={handleActualizarDatosContacto}
-            onSiguiente={() => setPasoActivo(2)}
-            onGuardar={handleGuardarBorrador}
-            guardando={guardando}
-          />
+          <>
+            {/* Fuera de Paso1Contacto a propósito: ese componente se remonta tras cada
+                autocompletado y arrastraría el mensaje de resultado. */}
+            <CargarReciboCfe onReciboLeido={handleReciboLeido} />
+            <Paso1Contacto
+              key={claveContacto}
+              datosContacto={datosContacto}
+              onActualizarDatos={handleActualizarDatosContacto}
+              onSiguiente={() => setPasoActivo(2)}
+              onGuardar={handleGuardarBorrador}
+              guardando={guardando}
+            />
+          </>
         )}
 
         {/* --- PASO 2: CONSUMO --- */}
@@ -479,6 +571,8 @@ export default function NuevoProyecto() {
             setInversorKey={setInversorKey}
             cantInversores={cantInversores}
             setCantInversores={setCantInversores}
+            tipoEquipoInversor={tipoEquipoInversor}
+            setTipoEquipoInversor={setTipoEquipoInversor}
             tamanoSistema={tamanoSistema}
             produccion={produccion}
             autoconsumo={autoconsumo}
@@ -575,6 +669,14 @@ export default function NuevoProyecto() {
             onAnterior={() => setPasoActivo(4)}
             onGuardarBorrador={handleGuardarBorrador}
             onFinalizar={handleCrearProyecto}
+            // El modal de la Carta Poder ya guardó esto en el servidor; se refleja en el
+            // estado para que el siguiente "Guardar Proyecto" no lo pise con valores viejos.
+            onDatosCartaPoderGuardados={(datos) => {
+              setDireccion(datos.direccion);
+              setCodigoPostal(datos.codigoPostal);
+              setNumeroServicio(datos.numeroServicio);
+              setNumeroMedidor(datos.numeroMedidor);
+            }}
           />
         )}
       </div>

@@ -5,6 +5,8 @@ export interface EquipoSeleccionado {
   cantPaneles: number;
   inversorClave: string;
   cantInversores: number;
+  /** Si se omite, el backend asume "Inversor". */
+  tipoEquipoInversor?: 'Inversor' | 'Microinversor';
 }
 
 export interface OtrosCargosPayload {
@@ -28,6 +30,9 @@ export interface DatosProyectoPayload {
   hilos: string;
   nombreRecibo: string;
   numeroServicio: string;
+  direccion?: string;
+  codigoPostal?: string;
+  numeroMedidor?: string;
   ivaCFE: number;
   porcentajeDap: string;
   usarNuevaTarifa: boolean;

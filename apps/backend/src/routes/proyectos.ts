@@ -64,6 +64,31 @@ proyectosRoutes.patch('/:id/fase', zValidator('json', patchFaseSchema), async (c
   return c.json(proyecto);
 });
 
+/**
+ * Datos del domicilio y del servicio CFE que pide la Carta Poder. Se actualizan
+ * aparte del guardado del wizard: el modal de la Carta Poder solo completa
+ * esto y no debe crear una versión nueva de la cotización.
+ */
+const patchDatosCartaPoderSchema = z.object({
+  direccion: z.string().trim().min(1, 'La dirección es obligatoria'),
+  codigoPostal: z.string().trim().min(1, 'El código postal es obligatorio'),
+  numeroServicio: z.string().trim().min(1, 'El número de servicio es obligatorio'),
+  numeroMedidor: z.string().trim().min(1, 'El número de medidor es obligatorio'),
+});
+
+proyectosRoutes.patch(
+  '/:id/datos-carta-poder',
+  zValidator('json', patchDatosCartaPoderSchema),
+  async (c) => {
+    const prisma = c.get('prisma');
+    const existente = await prisma.proyecto.findUnique({ where: { id: c.req.param('id') } });
+    if (!existente || existente.deletedAt) throw new NoEncontradoError('Proyecto');
+
+    await prisma.proyecto.update({ where: { id: c.req.param('id') }, data: c.req.valid('json') });
+    return c.json(await obtenerProyectoHidratado(prisma, c.req.param('id')));
+  }
+);
+
 proyectosRoutes.delete('/:id', async (c) => {
   const prisma = c.get('prisma');
   const existente = await prisma.proyecto.findUnique({ where: { id: c.req.param('id') } });

@@ -19,6 +19,7 @@ import {
   calcularProduccionEstacional,
   calcularProyeccion5Anos,
 } from './confirmacion';
+import type { DatosCartaPoderGuardados } from './confirmacion/AccionesProyecto';
 import GraficaConsumoAnual from './charts/GraficaConsumoAnual';
 import GraficaProyeccion from './charts/GraficaProyeccion';
 import GraficaGastoAcumulado from './charts/GraficaGastoAcumulado';
@@ -88,6 +89,7 @@ export interface Paso5ConfirmacionProps {
   onGuardarBorrador?: () => void;
   onFinalizar?: () => void;
   onDescargarCotizacion?: () => void;
+  onDatosCartaPoderGuardados?: (datos: DatosCartaPoderGuardados) => void;
 }
 
 export default function Paso5Confirmacion({
@@ -130,6 +132,7 @@ export default function Paso5Confirmacion({
   onGuardarBorrador,
   onFinalizar,
   onDescargarCotizacion,
+  onDatosCartaPoderGuardados,
 }: Paso5ConfirmacionProps) {
   // Ahorro anual estimado (ahorro por periodo * 6 bimestres o 12 meses)
   const ahorroAnual = useMemo(() => {
@@ -271,6 +274,7 @@ export default function Paso5Confirmacion({
       {/* 12. PROYECTO, DOCUMENTOS Y BOTONES DE FINALIZACIÓN */}
       <AccionesProyecto
         proyectoId={proyectoId}
+        granTotalActual={granTotal}
         panelClave={panelKey}
         inversorClave={inversorKey}
         nombreProyecto={nombreProyecto}
@@ -280,6 +284,7 @@ export default function Paso5Confirmacion({
         onGuardarBorrador={onGuardarBorrador}
         onFinalizar={onFinalizar}
         onDescargarCotizacion={onDescargarCotizacion}
+        onDatosCartaPoderGuardados={onDatosCartaPoderGuardados}
       />
     </div>
   );

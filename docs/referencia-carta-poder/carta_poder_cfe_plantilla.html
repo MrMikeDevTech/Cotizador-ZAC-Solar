@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carta Poder ante CFE</title>
+<style>
+  /* ---------- Hoja Carta para impresión / PDF ---------- */
+  @page {
+    size: letter;
+    margin: 25mm 20mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12pt;
+    line-height: 1.55;
+    color: #111;
+    background: #e5e7eb;
+  }
+
+  /* Vista en pantalla: simula la hoja Carta (215.9 x 279.4 mm) con sus márgenes */
+  .hoja {
+    width: 215.9mm;
+    min-height: 279.4mm;
+    margin: 16px auto;
+    padding: 25mm 20mm;
+    background: #fff;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
+  }
+
+  /* Al imprimir, los márgenes los aporta @page */
+  @media print {
+    body { background: #fff; }
+    .hoja {
+      width: auto;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+  }
+
+  /* ---------- Contenido ---------- */
+  h1 {
+    margin: 0 0 14mm;
+    font-size: 16pt;
+    letter-spacing: .12em;
+    text-align: center;
+  }
+
+  .lugar-fecha {
+    margin: 0 0 10mm;
+    text-align: right;
+  }
+
+  .destinatario {
+    margin: 0 0 8mm;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .cuerpo {
+    margin: 0 0 6mm;
+    text-align: justify;
+    hyphens: none;
+  }
+
+  .cuerpo strong { font-weight: bold; }
+
+  .despedida { margin: 8mm 0 0; }
+
+  /* ---------- Bloque de firmas ---------- */
+  .firmas {
+    margin-top: 30mm;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 20mm;
+    row-gap: 24mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .firma {
+    text-align: center;
+    break-inside: avoid;
+  }
+
+  /* Espacio libre para firmar + línea */
+  .firma .linea {
+    height: 18mm;
+    border-bottom: 1px solid #111;
+  }
+
+  .firma .nombre {
+    margin-top: 2mm;
+    font-weight: bold;
+    font-size: 11pt;
+    line-height: 1.3;
+    text-transform: uppercase;
+  }
+
+  .firma .rol {
+    margin-top: 1mm;
+    font-size: 10.5pt;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <main class="hoja">
+
+    <h1>CARTA PODER</h1>
+
+    <p class="lugar-fecha">{{lugarFecha}}</p>
+
+    <p class="destinatario">CFE Suministrador de Servicios Básicos</p>
+
+    <p class="cuerpo">
+      Por medio de este conducto otorgo poder amplio y suficiente al ciudadano
+      <strong>{{nombreApoderado}}</strong>, para que, a nombre de
+      <strong>{{nombreCliente}}</strong>, lleve a cabo la gestoría para el trámite de
+      interconexión y contraprestación necesaria, para solicitar información y realizar
+      los trámites ante CFE Suministrador de Servicios Básicos y, de ser necesario,
+      pueda firmar los contratos en mi nombre. En el domicilio
+      <strong>{{direccionCompleta}}</strong>, con C.P. <strong>{{codigoPostal}}</strong>,
+      con No. de Servicio: <strong>{{numeroServicio}}</strong> y de medidor
+      <strong>{{numeroMedidor}}</strong>.
+    </p>
+
+    <p class="despedida">Sin más por el momento, quedo de usted.</p>
+
+    <section class="firmas">
+      <!-- Fila superior -->
+      <div class="firma">
+        <div class="linea"></div>
+        <div class="nombre">{{nombreApoderado}}</div>
+        <div class="rol">Apoderado</div>
+      </div>
+      <div class="firma">
+        <div class="linea"></div>
+        <div class="nombre">{{nombreCliente}}</div>
+        <div class="rol">Otorgante</div>
+      </div>
+
+      <!-- Fila inferior -->
+      <div class="firma">
+        <div class="linea"></div>
+        <div class="rol">Testigo 1</div>
+      </div>
+      <div class="firma">
+        <div class="linea"></div>
+        <div class="rol">Testigo 2</div>
+      </div>
+    </section>
+
+  </main>
+</body>
+</html>

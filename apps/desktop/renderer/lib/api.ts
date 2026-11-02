@@ -109,10 +109,13 @@ export function onNoAutorizado(cb: () => void): void {
 
 async function peticion<T>(ruta: string, opciones?: RequestInit): Promise<T> {
   const token = leerToken();
+  // Con un FormData el navegador debe fijar el `Content-Type` él mismo: lleva
+  // el `boundary` que separa las partes, y uno escrito a mano lo rompería.
+  const esFormData = typeof FormData !== 'undefined' && opciones?.body instanceof FormData;
   const respuesta = await fetch(`${resolverBaseUrl()}${ruta}`, {
     ...opciones,
     headers: {
-      'Content-Type': 'application/json',
+      ...(esFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...opciones?.headers,
     },
@@ -186,6 +189,11 @@ export const api = {
   get: <T>(ruta: string) => peticion<T>(ruta),
   descargar,
   post: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * Sube archivos como `multipart/form-data` (p. ej. el PDF de un recibo).
+   * Comparte con el resto de la API el token, el manejo del 401 y `ApiError`.
+   */
+  subir: <T>(ruta: string, formulario: FormData) => peticion<T>(ruta, { method: 'POST', body: formulario }),
   put: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'PUT', body: JSON.stringify(body) }),
   patch: <T>(ruta: string, body: unknown) => peticion<T>(ruta, { method: 'PATCH', body: JSON.stringify(body) }),
   del: <T>(ruta: string) => peticion<T>(ruta, { method: 'DELETE' }),

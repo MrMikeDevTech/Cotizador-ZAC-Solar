@@ -50,9 +50,7 @@ export function DocumentoCotizacion({ datos }: { datos: DatosCotizacionPdf }) {
 
       {paginas.map((pagina, indice) => (
         <div key={indice} className={indice === 0 ? 'hoja' : 'hoja salto-pagina-antes'}>
-          {datos.mostrarLogo && (
-            <img className="marca-agua" src="/zac-logo.png" alt="" data-documento-imagen />
-          )}
+          <img className="marca-agua" src="/logo.jpeg" alt="" data-documento-imagen />
 
           <div className="contenido">
             {pagina.esPrimera && (
@@ -86,9 +84,7 @@ export function DocumentoCotizacion({ datos }: { datos: DatosCotizacionPdf }) {
                     </table>
                   </div>
 
-                  {datos.mostrarLogo && (
-                    <img className="logo" src="/zac-logo.png" alt="Logo" data-documento-imagen />
-                  )}
+                  <img className="logo" src="/logo.jpeg" alt="Logo" data-documento-imagen />
                 </div>
 
                 <p className="intro">{datos.intro}</p>
@@ -114,12 +110,16 @@ export function DocumentoCotizacion({ datos }: { datos: DatosCotizacionPdf }) {
               <>
                 <div className="pie-tabla">
                   <div className="observaciones">
-                    <h3>Observaciones</h3>
-                    <ul>
-                      {datos.observaciones.map((observacion, indiceObs) => (
-                        <li key={indiceObs}>{observacion}</li>
-                      ))}
-                    </ul>
+                    {datos.observaciones.length > 0 && (
+                      <>
+                        <h3>Observaciones</h3>
+                        <ul>
+                          {datos.observaciones.map((observacion, indiceObs) => (
+                            <li key={indiceObs}>{observacion}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                   </div>
                   <div className="total-etiqueta">TOTAL</div>
                   <div className="total-valor">{formatearMXN(datos.total)}</div>
@@ -224,11 +224,13 @@ const CSS_PLANTILLA = `
   .marca-agua {
     position: absolute;
     left: 50%;
-    top: 1.6in;
-    transform: translateX(-50%);
+    top: 50%;
+    transform: translate(-50%, -50%);
     width: 8in;
     max-width: none;
     opacity: 0.1;
+    /* El JPEG trae fondo blanco: multiply lo vuelve transparente sobre la hoja. */
+    mix-blend-mode: multiply;
     z-index: 0;
     pointer-events: none;
   }

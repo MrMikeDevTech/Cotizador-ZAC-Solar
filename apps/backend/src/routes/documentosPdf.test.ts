@@ -131,6 +131,21 @@ describe('documentos: PDF generado en el servidor', () => {
     assert.equal(url.searchParams.get('proyectoId'), proyectoId);
   });
 
+  test('la cotización larga se renderiza con su propio tipo y nombre de archivo', async () => {
+    reiniciarEspias();
+    const app = await crearApp_(true);
+    const res = await app.request(`/api/documentos/pdf/cotizacion-larga/${proyectoId}`, {
+      headers: authHeaders,
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(
+      res.headers.get('Content-Disposition'),
+      'attachment; filename="cotizacion-larga-Casa-Ramirez-Tepic.pdf"'
+    );
+    assert.equal(new URL(urlsRenderizadas[0]!).searchParams.get('tipo'), 'cotizacion-larga');
+  });
+
   test('el token de la URL es una sesión válida del usuario que pidió el PDF', async () => {
     reiniciarEspias();
     const app = await crearApp_(true);

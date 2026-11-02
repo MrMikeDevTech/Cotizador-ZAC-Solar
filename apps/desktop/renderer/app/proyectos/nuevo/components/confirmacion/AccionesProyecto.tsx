@@ -6,9 +6,22 @@ import { Icono } from '../../../../components/Icono';
 import Card from './Card';
 import { ApiError, api } from '../../../../../lib/api';
 import { descargarBlob } from '../../../../../lib/descargarBlob';
+import { useSesion } from '../../../../../lib/SesionContext';
+import {
+  construirDatosCartaPoder,
+  type DatosCartaPoder,
+  type ProyectoParaCartaPoder,
+} from '@cotizador/shared';
+import ModalCartaPoder from './ModalCartaPoder';
 
 interface AccionesProyectoProps {
   proyectoId?: string;
+  /**
+   * Gran total (MXN) que la pantalla muestra ahora. Los PDF se generan desde lo
+   * **guardado**, no desde lo que hay en pantalla: si difiere, hay cambios sin
+   * guardar y el PDF saldría con otras cifras.
+   */
+  granTotalActual?: number;
   panelClave?: string;
   inversorClave?: string;
   nombreProyecto?: string;
@@ -18,12 +31,22 @@ interface AccionesProyectoProps {
   onGuardarBorrador?: () => void;
   onFinalizar?: () => void;
   onDescargarCotizacion?: () => void;
+  /** Se avisa tras guardar los datos de la Carta Poder, para que el wizard no los pise. */
+  onDatosCartaPoderGuardados?: (datos: DatosCartaPoderGuardados) => void;
 }
 
-type TipoDocumento = 'cotizacion' | 'contrato' | 'carta-poder' | 'ficha_panel' | 'ficha_inversor' | 'horas_sol';
+export interface DatosCartaPoderGuardados {
+  direccion: string;
+  codigoPostal: string;
+  numeroServicio: string;
+  numeroMedidor: string;
+}
+
+type TipoDocumento = 'cotizacion' | 'cotizacion-larga' | 'contrato' | 'carta-poder' | 'ficha_panel' | 'ficha_inversor' | 'horas_sol';
 
 export default function AccionesProyecto({
   proyectoId,
+  granTotalActual,
   panelClave,
   inversorClave,
   nombreProyecto,
@@ -33,7 +56,12 @@ export default function AccionesProyecto({
   onGuardarBorrador,
   onFinalizar,
   onDescargarCotizacion,
+  onDatosCartaPoderGuardados,
 }: AccionesProyectoProps) {
+  const { usuario } = useSesion();
+  const [datosCartaPoder, setDatosCartaPoder] = useState<DatosCartaPoder | null>(null);
+  const [errorCartaPoder, setErrorCartaPoder] = useState<string | null>(null);
+  const [confirmandoCartaPoder, setConfirmandoCartaPoder] = useState(false);
   const [mensajeDocumento, setMensajeDocumento] = useState<string | null>(null);
   const [generando, setGenerando] = useState<string | null>(null);
   const [mostrarFormTarea, setMostrarFormTarea] = useState(false);
@@ -101,6 +129,23 @@ export default function AccionesProyecto({
     setGenerando(tipo);
     setMensajeDocumento(null);
     try {
+      if (granTotalActual !== undefined && (tipo === 'cotizacion' || tipo === 'cotizacion-larga')) {
+        const guardado = await api.get<{ cotizaciones: Array<{ granTotal: number }> }>(
+          `/api/proyectos/${proyectoId}`
+        );
+        const totalGuardado = guardado.cotizaciones[0]?.granTotal;
+        if (totalGuardado === undefined || Math.abs(totalGuardado - granTotalActual) >= 0.005) {
+          const formato = (n: number) =>
+            `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          setMensajeDocumento(
+            totalGuardado === undefined
+              ? 'Este proyecto aún no tiene una cotización guardada. Pulsa "Guardar Proyecto" y vuelve a descargar.'
+              : `Hay cambios sin guardar: en pantalla el total es ${formato(granTotalActual)} y lo guardado es ${formato(totalGuardado)}. Pulsa "Guardar Proyecto" antes de descargar el PDF.`
+          );
+          return;
+        }
+      }
+
       if (!window.api?.generarPdf) {
         const { blob, nombreArchivo } = await api.descargar(
           `/api/documentos/pdf/${tipo}/${proyectoId}`
@@ -129,6 +174,56 @@ export default function AccionesProyecto({
     } finally {
       setGenerando(null);
     }
+  };
+
+  /**
+   * Carta Poder: antes de generarla se abre un modal con los datos guardados del
+   * proyecto (siempre, para que el asesor los confirme; los que falten salen
+   * en amarillo). Parte de lo **guardado**, igual que el PDF.
+   */
+  const abrirCartaPoder = async () => {
+    if (!proyectoId) {
+      setMensajeDocumento('Guarda el proyecto antes de generar este documento.');
+      return;
+    }
+    setGenerando('carta-poder');
+    setMensajeDocumento(null);
+    try {
+      const proyecto = await api.get<ProyectoParaCartaPoder>(`/api/proyectos/${proyectoId}`);
+      setErrorCartaPoder(null);
+      setDatosCartaPoder(construirDatosCartaPoder(proyecto, usuario?.nombre ?? ''));
+    } catch (error) {
+      setMensajeDocumento(
+        error instanceof ApiError ? error.message : 'No se pudieron consultar los datos del proyecto.'
+      );
+    } finally {
+      setGenerando(null);
+    }
+  };
+
+  const confirmarCartaPoder = async (datos: DatosCartaPoder) => {
+    if (!proyectoId) return;
+    setConfirmandoCartaPoder(true);
+    setErrorCartaPoder(null);
+    try {
+      const guardados: DatosCartaPoderGuardados = {
+        direccion: datos.direccionCompleta.trim(),
+        codigoPostal: datos.codigoPostal.trim(),
+        numeroServicio: datos.numeroServicio.trim(),
+        numeroMedidor: datos.numeroMedidor.trim(),
+      };
+      await api.patch(`/api/proyectos/${proyectoId}/datos-carta-poder`, guardados);
+      onDatosCartaPoderGuardados?.(guardados);
+    } catch (error) {
+      setErrorCartaPoder(
+        error instanceof ApiError ? error.message : 'No se pudieron guardar los datos.'
+      );
+      setConfirmandoCartaPoder(false);
+      return;
+    }
+    setDatosCartaPoder(null);
+    setConfirmandoCartaPoder(false);
+    await generarPdf('carta-poder', `carta-poder-${nombreProyecto ?? 'proyecto'}`);
   };
 
   /** Fichas técnicas: se abren si ya existe una plantilla cargada en Configuración → Catálogo. */
@@ -263,7 +358,7 @@ export default function AccionesProyecto({
             <li>
               <button
                 type="button"
-                onClick={() => generarPdf('carta-poder', `carta-poder-${nombreProyecto ?? 'proyecto'}`)}
+                onClick={abrirCartaPoder}
                 disabled={generando === 'carta-poder'}
                 className="hover:text-teal-600 text-left transition-colors cursor-pointer disabled:opacity-50"
               >
@@ -318,7 +413,27 @@ export default function AccionesProyecto({
           <Icono icon={Download} size={20} />
           {generando === 'cotizacion' ? 'Generando…' : 'Descargar cotización'}
         </button>
+        <button
+          type="button"
+          onClick={() =>
+            generarPdf('cotizacion-larga', `cotizacion-detallada-${nombreProyecto ?? 'proyecto'}`)
+          }
+          disabled={generando === 'cotizacion-larga'}
+          className="text-sm font-semibold text-gray-600 hover:text-[#f7931e] underline-offset-4 hover:underline transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {generando === 'cotizacion-larga' ? 'Generando…' : 'Descargar cotización detallada'}
+        </button>
       </div>
+
+      {datosCartaPoder && (
+        <ModalCartaPoder
+          datosIniciales={datosCartaPoder}
+          generando={confirmandoCartaPoder}
+          error={errorCartaPoder}
+          onCancelar={() => setDatosCartaPoder(null)}
+          onConfirmar={confirmarCartaPoder}
+        />
+      )}
 
       {/* 3. NAVEGACIÓN INFERIOR WIZARD */}
       <div className="flex flex-col items-end gap-2 pt-6 border-t border-gray-100">
