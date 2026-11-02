@@ -14,6 +14,10 @@ interface GenerarPdfPayload {
 contextBridge.exposeInMainWorld("api", {
   ping: () => ipcRenderer.invoke("ping"),
   apiBaseUrl: leerApiBaseUrl(),
+  // Token de sesión guardado por el proceso principal (ver main.ts, "Sesión persistente").
+  tokenSesionInicial: ipcRenderer.sendSync("sesion-leer") as string,
+  guardarTokenSesion: (token: string) => ipcRenderer.invoke("sesion-guardar", token),
+  borrarTokenSesion: () => ipcRenderer.invoke("sesion-borrar"),
   generarPdf: (payload: GenerarPdfPayload) => ipcRenderer.invoke("generar-pdf", payload),
   abrirArchivo: (ruta: string) => ipcRenderer.invoke("abrir-archivo", ruta),
 });

@@ -51,6 +51,7 @@ export const cargoEditableSchema = z.object({
   id: z.string(),
   nombre: z.string(),
   monto: z.number(),
+  margenPorcentaje: z.number().default(0),
 });
 
 export const conceptoCotizacionSchema = z.object({

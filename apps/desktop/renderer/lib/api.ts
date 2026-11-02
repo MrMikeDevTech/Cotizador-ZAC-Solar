@@ -15,6 +15,9 @@ declare global {
     api?: {
       ping: () => Promise<string>;
       apiBaseUrl?: string;
+      tokenSesionInicial?: string;
+      guardarTokenSesion?: (token: string) => Promise<void>;
+      borrarTokenSesion?: () => Promise<void>;
       generarPdf?: (payload: GenerarPdfPayload) => Promise<GenerarPdfResultado>;
       abrirArchivo?: (ruta: string) => Promise<{ ok: boolean; mensaje?: string }>;
     };
@@ -65,10 +68,27 @@ export function enContextoDeRender(): boolean {
   return leerTokenDeRender() !== null;
 }
 
+/**
+ * En Electron el token vive en el proceso principal (archivo en la carpeta de
+ * datos del usuario), no en `localStorage`: el renderer se sirve en un puerto
+ * distinto en cada arranque y el almacenamiento web es por origen, así que
+ * `localStorage` empezaría vacío siempre y habría que iniciar sesión cada vez.
+ * `undefined` = aún no se ha leído de `window.api.tokenSesionInicial`.
+ */
+let tokenElectron: string | null | undefined;
+
+function usaAlmacenElectron(): boolean {
+  return typeof window !== 'undefined' && typeof window.api?.guardarTokenSesion === 'function';
+}
+
 export function leerToken(): string | null {
   if (typeof window === 'undefined') return null;
   const deRender = leerTokenDeRender();
   if (deRender) return deRender;
+  if (usaAlmacenElectron()) {
+    if (tokenElectron === undefined) tokenElectron = window.api?.tokenSesionInicial || null;
+    return tokenElectron;
+  }
   try {
     return window.localStorage.getItem(CLAVE_TOKEN);
   } catch {
@@ -76,8 +96,14 @@ export function leerToken(): string | null {
   }
 }
 
-export function guardarToken(token: string): void {
+/** Devuelve una promesa que se resuelve cuando el token ya quedó escrito (útil antes de recargar la página). */
+export async function guardarToken(token: string): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (usaAlmacenElectron()) {
+    tokenElectron = token;
+    await window.api?.guardarTokenSesion?.(token);
+    return;
+  }
   try {
     window.localStorage.setItem(CLAVE_TOKEN, token);
   } catch {
@@ -87,6 +113,11 @@ export function guardarToken(token: string): void {
 
 export function borrarToken(): void {
   if (typeof window === 'undefined') return;
+  if (usaAlmacenElectron()) {
+    tokenElectron = null;
+    void window.api?.borrarTokenSesion?.();
+    return;
+  }
   try {
     window.localStorage.removeItem(CLAVE_TOKEN);
   } catch {

@@ -36,6 +36,19 @@ exigirArchivo(
 );
 
 // 2. Bundle del proceso principal, con las piezas que no se ven a simple vista.
+// El preload debe ser CommonJS: con sandbox:true Electron no carga un preload ESM, la
+// ventana se queda sin `window.api` (sin URL de la API) y la app dice que no puede
+// contactar con el servidor interno. Solo se ve en la app instalada, no en desarrollo.
+const rutaPreload = join(raizDesktop, 'electron', 'dist', 'preload.cjs');
+if (exigirArchivo(rutaPreload, 'El preload de Electron (CommonJS)', 'bun run build:electron')) {
+  if (/^\s*(import|export)\s/m.test(readFileSync(rutaPreload, 'utf-8'))) {
+    problemas.push(
+      'preload.cjs contiene import/export (ESM): Electron con sandbox no lo cargará.\n' +
+        '  Compílalo con --format=cjs (script build:electron).'
+    );
+  }
+}
+
 const bundlePrincipal = join(raizDesktop, 'electron', 'dist', 'main.js');
 if (exigirArchivo(bundlePrincipal, 'El bundle de Electron', 'bun run build:electron')) {
   const contenido = readFileSync(bundlePrincipal, 'utf-8');

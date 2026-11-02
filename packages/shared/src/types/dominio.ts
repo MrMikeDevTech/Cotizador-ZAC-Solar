@@ -36,7 +36,10 @@ export type EstatusProyecto = 'borrador' | 'cotizado' | 'enviado' | 'vendido' | 
 export interface CargoEditable {
   id: string;
   nombre: string;
+  /** Costo base del cargo. El total es `monto × (1 + margenPorcentaje / 100)`. */
   monto: number;
+  /** Margen sobre el costo base; se edita en Opciones avanzadas. Ausente = 0. */
+  margenPorcentaje?: number;
 }
 
 export interface ConceptoCotizacion {

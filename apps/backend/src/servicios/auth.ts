@@ -25,8 +25,23 @@ interface FilaUsuario {
 }
 
 const LARGO_CLAVE_SCRYPT = 64;
-/** Vigencia de una sesión: 30 días. */
-export const SESION_DURACION_MS = 30 * 24 * 60 * 60 * 1000;
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Vigencia de una sesión de inicio de sesión: un año, **renovable**. La app es de
+ * escritorio y corre sin conexión: pedir la contraseña cada cierto tiempo solo
+ * estorba. Cada vez que se usa una sesión de larga vida se vuelve a extender un
+ * año completo (ver `validarSesion`), así que mientras se use no caduca nunca;
+ * solo se cierra con "Cerrar sesión", al desactivar al usuario o al cambiarle la clave.
+ */
+export const SESION_DURACION_MS = 365 * DIA_MS;
+
+/**
+ * Una sesión se renueva si le queda más de esto (así nunca se renuevan los tokens
+ * efímeros de 60 s del render de PDF) y ya gastó al menos esto de su vigencia
+ * (así la renovación escribe como mucho una vez al día por sesión).
+ */
+const UMBRAL_RENOVACION_MS = DIA_MS;
 
 // ─────────────────────────────────────────────────────────
 // Hashing de contraseñas
@@ -40,6 +55,11 @@ export async function generarHash(password: string): Promise<{ salt: string; has
   const salt = randomBytes(16).toString('hex');
   const derivado = (await scryptAsync(password, salt, LARGO_CLAVE_SCRYPT)) as Buffer;
   return { salt, hash: derivado.toString('hex') };
+}
+
+/** Contraseña aleatoria que nadie conoce, para cuentas dadas de alta sin contraseña (selector rápido). */
+export function generarPasswordAleatoria(): string {
+  return randomBytes(24).toString('hex');
 }
 
 /** Compara una contraseña contra su hash guardado, siempre con `timingSafeEqual`. */
@@ -145,7 +165,20 @@ export async function validarSesion(tx: Cliente, token: string): Promise<Usuario
   const usuario = await tx.usuario.findUnique({ where: { id: sesion.usuarioId } });
   if (!usuario || usuario.deletedAt || !usuario.activo) return null;
 
+  const restante = sesion.expiraEn.getTime() - Date.now();
+  if (restante > UMBRAL_RENOVACION_MS && restante < SESION_DURACION_MS - UMBRAL_RENOVACION_MS) {
+    // Renovación deslizante. Un fallo aquí (p. ej. base ocupada) no debe tumbar la petición.
+    await tx.sesion
+      .update({ where: { id: sesion.id }, data: { expiraEn: new Date(Date.now() + SESION_DURACION_MS) } })
+      .catch(() => {});
+  }
+
   return aUsuarioSesion(usuario);
+}
+
+/** Correos en minúsculas y sin espacios: `Ana@X.com ` y `ana@x.com` son la misma cuenta. */
+export function normalizarEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 /** Borra la sesión asociada a un token (logout). */

@@ -1,4 +1,4 @@
-import { PANELES_INICIALES, INVERSORES_INICIALES } from '@cotizador/shared';
+import { PANELES_INICIALES, INVERSORES_INICIALES, PRECIO_BASE_POR_PANEL } from '@cotizador/shared';
 import { PanelData, InversorData, PasoWizard, EstructuraInstalacion, ConceptoCotizacion } from '../types';
 
 export const PASOS_PROYECTO: PasoWizard[] = [
@@ -71,11 +71,15 @@ export const LISTA_ESTRUCTURAS: EstructuraInstalacion[] = [
   { id: 'ptr', nombre: 'Estructura PTR Galvanizado', precio: 3600 },
 ];
 
+/**
+ * Material eléctrico, mano de obra y estructura de aluminio se cobran **por panel**:
+ * el `costoBase` inicial es el de un panel y `page.tsx` lo multiplica por la
+ * cantidad de paneles elegida en el Paso 3 (precios en `PRECIO_BASE_POR_PANEL`).
+ */
 export const CONCEPTOS_COTIZACION_DEFECTO: ConceptoCotizacion[] = [
   { id: '1', concepto: 'Precio de paneles', costoBase: 13200, margenPorcentaje: 0 },
   { id: '2', concepto: 'Precio de inversores', costoBase: 21871.98, margenPorcentaje: 0 },
-  { id: '3', concepto: 'Precio material eléctrico', costoBase: 3480, margenPorcentaje: 0 },
-  { id: '4', concepto: 'Mano de obra', costoBase: 3600, margenPorcentaje: 0 },
+  { id: '3', concepto: 'Precio material eléctrico', costoBase: PRECIO_BASE_POR_PANEL.materialElectrico, margenPorcentaje: 0 },
+  { id: '4', concepto: 'Mano de obra', costoBase: PRECIO_BASE_POR_PANEL.manoDeObra, margenPorcentaje: 0 },
+  { id: '5', concepto: 'Estructura de aluminio', costoBase: PRECIO_BASE_POR_PANEL.estructuraAluminio, margenPorcentaje: 0 },
 ];
-
-

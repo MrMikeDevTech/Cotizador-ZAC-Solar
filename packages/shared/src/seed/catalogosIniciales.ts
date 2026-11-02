@@ -263,11 +263,23 @@ export const ESTRUCTURAS_INICIALES: EstructuraInstalacion[] = [
   { id: 'ptr', nombre: 'Estructura PTR Galvanizado', precio: 3600, activo: true, orden: 5 },
 ];
 
+/**
+ * Costo base **por panel** de los conceptos que crecen con la cantidad de paneles.
+ * El wizard multiplica cada uno por los paneles elegidos (ver `page.tsx`); el
+ * `costoBase` de la plantilla de abajo es el de un solo panel.
+ */
+export const PRECIO_BASE_POR_PANEL = {
+  materialElectrico: 1090,
+  manoDeObra: 950,
+  estructuraAluminio: 1050,
+} as const;
+
 export const CONCEPTOS_COTIZACION_DEFECTO: ConceptoPlantilla[] = [
   { id: '1', concepto: 'Precio de paneles', costoBase: 13200, margenPorcentaje: 0, orden: 0, activo: true },
   { id: '2', concepto: 'Precio de inversores', costoBase: 21871.98, margenPorcentaje: 0, orden: 1, activo: true },
-  { id: '3', concepto: 'Precio material eléctrico', costoBase: 3480, margenPorcentaje: 0, orden: 2, activo: true },
-  { id: '4', concepto: 'Mano de obra', costoBase: 3600, margenPorcentaje: 0, orden: 3, activo: true },
+  { id: '3', concepto: 'Precio material eléctrico', costoBase: PRECIO_BASE_POR_PANEL.materialElectrico, margenPorcentaje: 0, orden: 2, activo: true },
+  { id: '4', concepto: 'Mano de obra', costoBase: PRECIO_BASE_POR_PANEL.manoDeObra, margenPorcentaje: 0, orden: 3, activo: true },
+  { id: '5', concepto: 'Estructura de aluminio', costoBase: PRECIO_BASE_POR_PANEL.estructuraAluminio, margenPorcentaje: 0, orden: 4, activo: true },
 ];
 
 

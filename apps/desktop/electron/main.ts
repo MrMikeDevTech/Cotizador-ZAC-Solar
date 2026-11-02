@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from "electron";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -68,13 +68,30 @@ async function resolveRendererBaseUrl(): Promise<string> {
 
 let rendererBaseUrl = "";
 
+/**
+ * Registro en archivo (`<userData>/cotizador.log`). En la app instalada no hay
+ * consola, y los fallos de arranque (servidor interno, renderer) quedaban sin
+ * rastro. Nunca lanza: un log que falla no debe tumbar la app.
+ */
+function registrar(...partes: unknown[]): void {
+  try {
+    const linea = `${new Date().toISOString()} ${partes
+      .map((p) => (p instanceof Error ? (p.stack ?? p.message) : typeof p === "string" ? p : JSON.stringify(p)))
+      .join(" ")}
+`;
+    fs.appendFileSync(path.join(app.getPath("userData"), "cotizador.log"), linea);
+  } catch {
+    // sin registro
+  }
+}
+
 function resolveImprimirUrl(tipo: string, proyectoId: string): string {
   const query = `?tipo=${encodeURIComponent(tipo)}&proyectoId=${encodeURIComponent(proyectoId)}`;
   return `${rendererBaseUrl}/documentos/imprimir/${query}`;
 }
 
 /** Espera a que la vista de impresión marque `document.body.dataset.listo = "1"` (o "error"). */
-async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 8000): Promise<void> {
+async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 30000): Promise<void> {
   const inicio = Date.now();
   while (Date.now() - inicio < timeoutMs) {
     const listo: string = await win.webContents.executeJavaScript("document.body.dataset.listo");
@@ -82,6 +99,7 @@ async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 8000): P
     if (listo === "error") throw new Error("El proyecto no se pudo cargar para generar el documento.");
     await new Promise((r) => setTimeout(r, 150));
   }
+  registrar("pdf timeout. URL final:", win.webContents.getURL());
   throw new Error("Tiempo de espera agotado generando el documento.");
 }
 
@@ -96,10 +114,23 @@ async function esperarListoParaImprimir(win: BrowserWindow, timeoutMs = 8000): P
  * Chromium adicional.
  */
 async function renderizarUrlAPdf(url: string): Promise<Buffer> {
+  // La vista de impresión pide sus datos a la API como cualquier pantalla: necesita
+  // el mismo preload que la ventana principal (da `window.api.apiBaseUrl` y el token
+  // de sesión guardado). Sin él usaba el puerto de desarrollo (28914), la petición
+  // fallaba, el guard de sesión la mandaba a /login y nunca marcaba "listo": en la
+  // app instalada se veía como "Tiempo de espera agotado generando el documento".
   const ventana = new BrowserWindow({
     show: false,
-    webPreferences: { sandbox: true, contextIsolation: true },
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: [`--api-base-url=${apiBaseUrl}`],
+    },
   });
+  ventana.webContents.on("did-fail-load", (_e, codigo, descripcion, urlFallida) =>
+    registrar("pdf did-fail-load", codigo, descripcion, urlFallida),
+  );
 
   try {
     await ventana.loadURL(url);
@@ -231,12 +262,23 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      // CommonJS (.cjs): con sandbox:true Electron no carga un preload ESM, y el package.json es "type": "module".
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       additionalArguments: [`--api-base-url=${apiBaseUrl}`],
     },
+  });
+
+  registrar("Ventana creada. API:", apiBaseUrl, "Renderer:", rendererBaseUrl);
+  mainWindow.webContents.on("did-fail-load", (_e, codigo, descripcion, url) =>
+    registrar("did-fail-load", codigo, descripcion, url),
+  );
+  mainWindow.webContents.on("preload-error", (_e, ruta, error) => registrar("preload-error", ruta, error));
+  mainWindow.webContents.on("console-message", (...args: unknown[]) => {
+    const e = args[0] as { level?: unknown; message?: string } | undefined;
+    registrar("renderer-console", e && typeof e === "object" && "message" in e ? e.message : args.slice(1));
   });
 
   mainWindow.removeMenu();
@@ -258,8 +300,11 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   try {
+    registrar("Arranque. Empaquetada:", app.isPackaged, "userData:", app.getPath("userData"));
     apiBaseUrl = await iniciarBackend();
+    registrar("Backend interno escuchando en", apiBaseUrl);
   } catch (err) {
+    registrar("Fallo al iniciar el backend:", err);
     dialog.showErrorBox(
       "Cotizador — no se pudo iniciar la base de datos local",
       String(err),
@@ -290,15 +335,64 @@ app.on("before-quit", () => {
 
 app.on("render-process-gone", (_event, _webContents, details) => {
   console.error("Proceso de renderizado terminado:", details.reason);
+  registrar("render-process-gone", details);
   app.quit();
 });
 
 process.on("uncaughtException", (err) => {
   console.error("Error no capturado:", err);
+  registrar("uncaughtException", err);
   app.quit();
 });
 
 ipcMain.handle("ping", async () => "pong");
+
+// ---------------------------------------------------------------------------
+// Sesión persistente.
+//
+// El token no puede vivir en `localStorage`: el renderer y la API se sirven en
+// puertos aleatorios (`port: 0`) y el almacenamiento web es **por origen**
+// (incluido el puerto), así que cada arranque vería un localStorage vacío y
+// pediría iniciar sesión. Se guarda en un archivo de la carpeta de datos del
+// usuario, cifrado con el almacén del sistema (DPAPI/Keychain) cuando existe.
+// ---------------------------------------------------------------------------
+
+function rutaTokenSesion(): string {
+  return path.join(app.getPath("userData"), "sesion.bin");
+}
+
+function leerTokenSesion(): string {
+  try {
+    const bytes = fs.readFileSync(rutaTokenSesion());
+    if (bytes.length === 0) return "";
+    // Prefijo "e:" = cifrado con safeStorage, "p:" = texto plano (sin almacén disponible).
+    const marca = bytes.subarray(0, 2).toString("utf-8");
+    const cuerpo = bytes.subarray(2);
+    if (marca === "e:") return safeStorage.decryptString(cuerpo);
+    if (marca === "p:") return cuerpo.toString("utf-8");
+  } catch {
+    // Sin archivo o ilegible: simplemente no hay sesión guardada.
+  }
+  return "";
+}
+
+function guardarTokenSesion(token: string): void {
+  const cifrar = safeStorage.isEncryptionAvailable();
+  const cuerpo = cifrar ? safeStorage.encryptString(token) : Buffer.from(token, "utf-8");
+  fs.writeFileSync(rutaTokenSesion(), Buffer.concat([Buffer.from(cifrar ? "e:" : "p:"), cuerpo]), { mode: 0o600 });
+}
+
+// Síncrono a propósito: el renderer necesita el token antes de su primer render
+// para decidir entre el sistema y la pantalla de login, sin parpadeo.
+ipcMain.on("sesion-leer", (event) => {
+  event.returnValue = leerTokenSesion();
+});
+ipcMain.handle("sesion-guardar", async (_event, token: string) => {
+  if (typeof token === "string" && token.length > 0) guardarTokenSesion(token);
+});
+ipcMain.handle("sesion-borrar", async () => {
+  fs.rmSync(rutaTokenSesion(), { force: true });
+});
 
 interface GenerarPdfPayload {
   tipo: string;

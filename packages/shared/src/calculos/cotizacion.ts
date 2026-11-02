@@ -49,6 +49,11 @@ export function aplicarDescuento(
   return { porcentajeDescuento, montoDescuento, subtotalConDescuento: subtotal - montoDescuento };
 }
 
+/** Total de un cargo adicional: costo base más su margen (0 si no tiene). */
+export function totalDeCargo(cargo: Pick<CargoEditable, 'monto' | 'margenPorcentaje'>): number {
+  return (Number(cargo.monto) || 0) * (1 + (Number(cargo.margenPorcentaje) || 0) / 100);
+}
+
 /**
  * Totales de la cotización (Paso 4 / Paso 5). Antes duplicada literalmente
  * entre page.tsx y Paso4OtrosCargos.tsx — ahora una sola fuente de verdad.
@@ -67,8 +72,9 @@ export function calcularTotalesCotizacion({
     0
   );
 
+  // Un cargo adicional es un concepto más: costo base + margen.
   const subtotalCargosEditables = cargosEditables.reduce(
-    (acc, curr) => acc + (Number(curr.monto) || 0),
+    (acc, curr) => acc + totalDeCargo(curr),
     0
   );
 
@@ -83,12 +89,14 @@ export function calcularTotalesCotizacion({
   const montoIVA = incluirIva ? subtotalConDescuento * (ivaPorcentaje / 100) : 0;
   const granTotal = subtotalConDescuento + montoIVA;
 
-  const utilidadTotalMXN = conceptos.reduce(
-    (acc, item) => acc + item.costoBase * (item.margenPorcentaje / 100),
-    0
-  );
-  const porcentajeUtilidadTotal =
-    subtotalConceptos > 0 ? (utilidadTotalMXN / subtotalConceptos) * 100 : 0;
+  const utilidadTotalMXN =
+    conceptos.reduce((acc, item) => acc + item.costoBase * (item.margenPorcentaje / 100), 0) +
+    cargosEditables.reduce(
+      (acc, c) => acc + (Number(c.monto) || 0) * ((Number(c.margenPorcentaje) || 0) / 100),
+      0
+    );
+  const baseUtilidad = subtotalConceptos + subtotalCargosEditables;
+  const porcentajeUtilidadTotal = baseUtilidad > 0 ? (utilidadTotalMXN / baseUtilidad) * 100 : 0;
 
   return {
     subtotalConceptos,

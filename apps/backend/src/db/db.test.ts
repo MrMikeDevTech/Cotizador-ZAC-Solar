@@ -39,7 +39,7 @@ describe('migrador + seed', () => {
     assert.equal(await prisma.panel.count(), 6);
     assert.equal(await prisma.inversor.count(), 14);
     assert.equal(await prisma.estructura.count(), 6);
-    assert.equal(await prisma.conceptoPlantilla.count(), 4);
+    assert.equal(await prisma.conceptoPlantilla.count(), 5);
     assert.equal(await prisma.tarifa.count(), 10);
     // Municipios de Jalisco, Nayarit y los estados colindantes. Se compara
     // contra la propia semilla en vez de un número fijo: la lista crece al

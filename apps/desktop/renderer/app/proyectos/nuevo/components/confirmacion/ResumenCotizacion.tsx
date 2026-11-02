@@ -4,6 +4,7 @@ import React from 'react';
 import Card from './Card';
 import { ConceptoCotizacion, EstructuraInstalacion, CargoEditable, TipoMoneda } from '../../types';
 import { formatearMoneda } from './calculosConfirmacion';
+import { totalDeCargo } from '@cotizador/shared';
 
 interface ResumenCotizacionProps {
   conceptos?: ConceptoCotizacion[];
@@ -65,7 +66,7 @@ export default function ResumenCotizacion({
                 className="flex justify-between items-center border-b border-dashed border-gray-200 pb-2 text-gray-700"
               >
                 <span>{cargo.nombre || 'Otro cargo'}</span>
-                <span className="font-semibold text-gray-900">{formatMonto(cargo.monto)}</span>
+                <span className="font-semibold text-gray-900">{formatMonto(totalDeCargo(cargo))}</span>
               </div>
             )
         )}
