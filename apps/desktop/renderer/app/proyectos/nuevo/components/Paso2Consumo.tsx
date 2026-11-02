@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Info, Loader2, TriangleAlert } from 'lucide-react';
 import { calcularPagoRecibo } from '@cotizador/shared';
 import type { EscalonTarifa } from '@cotizador/shared';
@@ -9,6 +9,7 @@ import { tarifasClasicas, tarifasNuevas, opcionesHilos } from '../constants';
 import GraficaConsumo from './charts/GraficaConsumo';
 import { Icono } from '../../../components/Icono';
 import { useConfiguracion } from '../../../../lib/ConfiguracionContext';
+import { etiquetasDePeriodo } from '../utils/periodos';
 
 interface Paso2ConsumoProps {
   nombreProyecto?: string;
@@ -155,7 +156,15 @@ export default function Paso2Consumo({
     setLocalidadConsumo?.(primero ? `${estado} - ${primero}` : estado);
   };
 
+  // La tarifa por defecto solo se repone cuando **cambia** el checkbox de
+  // "tarifa nueva", no al abrir el paso: de lo contrario, entrar al Paso 2
+  // pisaba la tarifa de un proyecto guardado o la leída de un recibo CFE
+  // (`1B` volvía a `1A`). Se compara con el valor anterior, en vez de saltarse
+  // el primer render, para que también aguante el doble montaje del modo estricto.
+  const usarNuevaTarifaPrevio = useRef(usarNuevaTarifa);
   useEffect(() => {
+    if (usarNuevaTarifaPrevio.current === usarNuevaTarifa) return;
+    usarNuevaTarifaPrevio.current = usarNuevaTarifa;
     setTarifaSeleccionada(usarNuevaTarifa ? 'PDBT' : '1A');
   }, [usarNuevaTarifa, setTarifaSeleccionada]);
 
@@ -228,29 +237,11 @@ export default function Paso2Consumo({
   useEffect(() => {
     if (!fechaInicio || fechaInicio.length < 10) return;
 
-    const [year, month] = fechaInicio.split('-');
-    const startYear = parseInt(year);
-    const startMonth = parseInt(month) - 1;
-
-    const step = periodo === 'Bimestral' ? 2 : 1;
-
     setConsumos((prev) => {
       const nuevos = [...prev];
       for (let i = 0; i < 6; i++) {
-        const dateStart = new Date(startYear, startMonth - i * step, 15);
-        const dateEnd = new Date(startYear, startMonth - i * step + step, 15);
-
-        const sMonth = dateStart.toLocaleString('es-MX', { month: 'long' }).toLowerCase();
-        const sYear = dateStart.getFullYear();
-
-        const eMonth = dateEnd.toLocaleString('es-MX', { month: 'long' }).toLowerCase();
-        const eYear = dateEnd.getFullYear();
-
-        nuevos[i] = {
-          ...nuevos[i],
-          inicioStr: `${sMonth} ${sYear}`,
-          terminoStr: `${eMonth} ${eYear}`,
-        };
+        const etiquetas = etiquetasDePeriodo(fechaInicio, periodo, i);
+        if (etiquetas) nuevos[i] = { ...nuevos[i], ...etiquetas };
       }
       return nuevos;
     });

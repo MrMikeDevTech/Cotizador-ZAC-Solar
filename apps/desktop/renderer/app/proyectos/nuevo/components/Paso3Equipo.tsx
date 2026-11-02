@@ -9,10 +9,12 @@ import { panelesData, inversoresData } from '../constants';
 import GraficaProyeccion from './charts/GraficaProyeccion';
 import {
   formatearMoneda,
+  TIPOS_EQUIPO_INVERSOR,
   type CodigoAdvertencia,
   type PaqueteRecomendado,
   type PerfilPaquete,
   type ResultadoRecomendacion,
+  type TipoEquipoInversor,
 } from '@cotizador/shared';
 
 interface Paso3EquipoProps {
@@ -24,6 +26,8 @@ interface Paso3EquipoProps {
   setInversorKey: (val: string) => void;
   cantInversores: number | '';
   setCantInversores: (val: number | '') => void;
+  tipoEquipoInversor: TipoEquipoInversor;
+  setTipoEquipoInversor: (val: TipoEquipoInversor) => void;
 
   tamanoSistema: number;
   produccion: number;
@@ -248,6 +252,8 @@ export default function Paso3Equipo({
   setInversorKey,
   cantInversores,
   setCantInversores,
+  tipoEquipoInversor,
+  setTipoEquipoInversor,
   tamanoSistema,
   produccion,
   autoconsumo,
@@ -367,7 +373,7 @@ export default function Paso3Equipo({
       {/* Configuración de Inversores */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-8 items-end mb-8">
         <div className="md:col-span-1">
-          <label className="block text-xs font-bold text-gray-400 mb-1">Tipo de inversor</label>
+          <label className="block text-xs font-bold text-gray-400 mb-1">Modelo de inversor</label>
           <select
             value={inversorKey}
             onChange={(e) => setInversorKey(e.target.value)}
@@ -397,6 +403,33 @@ export default function Paso3Equipo({
             className="w-full border-b border-gray-300 py-2 text-sm focus:outline-none focus:border-[#00388d]"
           />
         </div>
+
+        {/* Tipo de equipo: cambia el concepto de la tabla de garantías del PDF. */}
+        <fieldset className="md:col-span-2">
+          <legend className="block text-xs font-bold text-gray-400 mb-1">Tipo de equipo</legend>
+          <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-0.5">
+            {TIPOS_EQUIPO_INVERSOR.map((tipo) => (
+              <label
+                key={tipo}
+                className={`cursor-pointer rounded-full px-5 py-1.5 text-xs font-semibold transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#00388d] ${
+                  tipoEquipoInversor === tipo
+                    ? 'bg-[#00388d] text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="tipoEquipoInversor"
+                  value={tipo}
+                  checked={tipoEquipoInversor === tipo}
+                  onChange={() => setTipoEquipoInversor(tipo)}
+                  className="sr-only"
+                />
+                {tipo}
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
       </div>
 

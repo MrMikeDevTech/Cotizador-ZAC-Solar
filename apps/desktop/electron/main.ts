@@ -141,6 +141,18 @@ function resolveMigrationsDir(): string {
     : path.join(__dirname, "..", "..", "..", "backend", "prisma", "migrations");
 }
 
+/**
+ * Datos de idioma del OCR de recibos CFE (`spa.traineddata`). Como las
+ * migraciones, no son código: viajan como recurso aparte (extraResources) y el
+ * servicio de lectura de recibos los busca en la carpeta que indica `TESSDATA_DIR`.
+ * En desarrollo no hace falta: el servicio usa `apps/backend/assets/tessdata`.
+ */
+function fijarCarpetaIdiomasOcr(): void {
+  if (app.isPackaged) {
+    process.env.TESSDATA_DIR = path.join(process.resourcesPath, "tessdata");
+  }
+}
+
 let apiBaseUrl = "";
 let servidorApi: ReturnType<typeof serve> | null = null;
 
@@ -184,6 +196,7 @@ async function sincronizarTarifasCfe(prisma: ReturnType<typeof crearClientePrism
 async function iniciarBackend(): Promise<string> {
   const dbPath = resolverRutaBaseDatos();
   process.env.DATABASE_URL = `file:${dbPath}`;
+  fijarCarpetaIdiomasOcr();
 
   ejecutarMigraciones(dbPath, resolveMigrationsDir());
   const prisma = crearClientePrisma(dbPath);

@@ -17,14 +17,19 @@
     "@cotizador/shared": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "@hono/zod-validator": "^0.9.1",
+    "@hyzyla/pdfium": "^3.0.0",
     "@prisma/adapter-better-sqlite3": "7.10.0",
     "@prisma/client": "7.10.0",
     "better-sqlite3": "^13.0.3",
-    "hono": "^4.13.7"
+    "hono": "^4.13.7",
+    "pngjs": "^7.0.0",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^2.1.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^26.6.5",
+    "@types/pngjs": "^6.0.5",
     "prisma": "7.10.0",
     "typescript": "5"
   }

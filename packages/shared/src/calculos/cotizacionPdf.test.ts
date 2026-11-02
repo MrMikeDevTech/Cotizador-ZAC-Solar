@@ -393,18 +393,56 @@ describe('construirCotizacionPdf — otros campos de texto', () => {
     expect(resultado.telefono).toBe('***');
   });
 
-  test('ubicacion usa localidadConsumo del proyecto si existe', () => {
-    const resultado = construirCotizacionPdf(entradaBase());
-    expect(resultado.ubicacion).toBe('Zapopan, Jalisco');
-  });
+  describe('ubicación: "Localidad, Estado" del contacto', () => {
+    const ubicacionDe = (contacto: Partial<ContactoCotizable>, localidadConsumo = '') =>
+      construirCotizacionPdf(
+        entradaBase({
+          proyecto: {
+            ...proyectoBase(cotizacionBase(), { ...CONTACTO_BASE, ...contacto }),
+            localidadConsumo,
+          },
+        })
+      ).ubicacion;
 
-  test('ubicacion cae a localidad/estado del contacto si el proyecto no la tiene', () => {
-    const proyecto: ProyectoCotizable = {
-      ...proyectoBase(cotizacionBase()),
-      localidadConsumo: '',
-    };
-    const resultado = construirCotizacionPdf(entradaBase({ proyecto }));
-    expect(resultado.ubicacion).toBe('Zapopan, Jalisco');
+    test('combina la localidad y el estado del contacto', () => {
+      expect(ubicacionDe({ localidad: 'Ixtapa de la Concepción', estado: 'Nayarit' })).toBe(
+        'Ixtapa de la Concepción, Nayarit'
+      );
+    });
+
+    test('la localidad del contacto manda sobre la localidad de consumo del Paso 2', () => {
+      expect(
+        ubicacionDe({ localidad: 'Zapopan', estado: 'Jalisco' }, 'Nayarit - Tepic')
+      ).toBe('Zapopan, Jalisco');
+    });
+
+    test('sin localidad: respalda con "Municipio, Estado" del Paso 2', () => {
+      expect(ubicacionDe({ localidad: '  ', estado: 'Nayarit' }, 'Nayarit - Tepic')).toBe(
+        'Tepic, Nayarit'
+      );
+    });
+
+    test('sin localidad ni estado en el contacto: usa estado y municipio del Paso 2', () => {
+      expect(ubicacionDe({ localidad: '', estado: '' }, 'Jalisco - Zapopan')).toBe(
+        'Zapopan, Jalisco'
+      );
+    });
+
+    test('sin localidad ni municipio: solo el estado', () => {
+      expect(ubicacionDe({ localidad: '', estado: 'Nayarit' })).toBe('Nayarit');
+    });
+
+    test('con localidad pero sin estado: solo la localidad (sin coma colgando)', () => {
+      expect(ubicacionDe({ localidad: 'Chacala', estado: '' })).toBe('Chacala');
+    });
+
+    test('sin ningún dato estructurado conserva el texto de localidadConsumo', () => {
+      expect(ubicacionDe({ localidad: '', estado: '' }, 'Chacala, Nayarit')).toBe('Chacala, Nayarit');
+    });
+
+    test('sin nada: cadena vacía', () => {
+      expect(ubicacionDe({ localidad: '', estado: '' })).toBe('');
+    });
   });
 
   test('observaciones se parten por saltos de línea descartando vacíos', () => {
@@ -416,12 +454,48 @@ describe('construirCotizacionPdf — otros campos de texto', () => {
     ]);
   });
 
-  test('metodoPago usa Contado por defecto si viene vacío', () => {
+  test('las observaciones de la cotización mandan sobre las de la empresa', () => {
+    const cotizacion = cotizacionBase({
+      observaciones: '• Tiempo estimado de instalación 15 días.\n- Cotización vigente los próximos 15 días.',
+    });
+    const resultado = construirCotizacionPdf(
+      entradaBase({ proyecto: proyectoBase(cotizacion) })
+    );
+    // Sin la viñeta propia: el documento pone la suya, y no debe salir "• •".
+    expect(resultado.observaciones).toEqual([
+      'Tiempo estimado de instalación 15 días.',
+      'Cotización vigente los próximos 15 días.',
+    ]);
+  });
+
+  test('observaciones de la cotización vacías o en blanco: se usan las de la empresa', () => {
+    const cotizacion = cotizacionBase({ observaciones: '  \n ' });
+    const resultado = construirCotizacionPdf(
+      entradaBase({ proyecto: proyectoBase(cotizacion) })
+    );
+    expect(resultado.observaciones).toEqual([
+      'Precios en MXN.',
+      'Vigencia de 15 días.',
+      'Incluye instalación.',
+    ]);
+  });
+
+  test('metodoPago usa "Contado / Transferencia" por defecto si viene vacío', () => {
     const cotizacion = cotizacionBase({ metodoPago: '' });
     const resultado = construirCotizacionPdf(
       entradaBase({ proyecto: proyectoBase(cotizacion) })
     );
-    expect(resultado.metodoPago).toBe('Contado');
+    expect(resultado.metodoPago).toBe('Contado / Transferencia');
+  });
+
+  test('metodoPago imprime tal cual el valor elegido, incluido un texto personalizado', () => {
+    for (const metodo of ['Financiamiento Solar', '30% hoy, resto a 90 días']) {
+      const cotizacion = cotizacionBase({ metodoPago: metodo });
+      const resultado = construirCotizacionPdf(
+        entradaBase({ proyecto: proyectoBase(cotizacion) })
+      );
+      expect(resultado.metodoPago).toBe(metodo);
+    }
   });
 });
 

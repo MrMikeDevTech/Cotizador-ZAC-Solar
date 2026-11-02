@@ -178,3 +178,20 @@
   font-display: swap;
   src: url('/fonts/oswald-600.woff2') format('woff2');
 }
+
+/* Roboto (Apache 2.0) para la cotización larga. TTF completos, sin subset. */
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/roboto-400.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/roboto-700.ttf') format('truetype');
+}

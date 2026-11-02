@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { zValidator } from '../validacion.ts';
 import { z } from 'zod';
 import {
@@ -11,8 +12,12 @@ import {
   calcularBeneficiosAmbientales,
   calcularROI,
   calcularTIR5Anos,
+  analizarReciboCfe,
+  reciboReconocido,
+  resultadoReciboCfeSchema,
 } from '@cotizador/shared';
-import { NoEncontradoError } from '../errores.ts';
+import { ErrorApi, NoEncontradoError } from '../errores.ts';
+import { extraerTextoRecibo } from '../servicios/extraerTextoRecibo.ts';
 import type { VariablesApp } from '../tipos.ts';
 
 export const cotizacionesRoutes = new Hono<{ Variables: VariablesApp }>();
@@ -97,6 +102,64 @@ const paginacionSchema = z.object({
   pagina: z.coerce.number().int().min(1).default(1),
   porPagina: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+/** Tamaño máximo de un recibo en PDF. Uno de CFE ronda 1 MB; esto deja holgura sin permitir abusos. */
+const TAMANO_MAXIMO_RECIBO = 10 * 1024 * 1024;
+
+/**
+ * Lee un recibo CFE en PDF (multipart, campo `archivo`) y devuelve los datos
+ * para autocompletar los Pasos 1 y 2 del wizard. No guarda nada: el asesor
+ * revisa lo detectado antes de aceptarlo.
+ *
+ * El texto sale de la capa de texto del PDF o, si está dañada (PDF impreso
+ * desde un celular), de un OCR sin conexión; ver `extraerTextoRecibo`.
+ * Las respuestas incluyen `advertencias` con todo lo que conviene revisar.
+ */
+cotizacionesRoutes.post(
+  '/parsear-recibo-cfe',
+  bodyLimit({
+    maxSize: TAMANO_MAXIMO_RECIBO + 64 * 1024,
+    onError: (c) =>
+      c.json(
+        { error: { codigo: 'RECIBO_INVALIDO', mensaje: 'El archivo supera el máximo de 10 MB.' } },
+        413
+      ),
+  }),
+  async (c) => {
+    let cuerpo: Record<string, unknown>;
+    try {
+      cuerpo = await c.req.parseBody();
+    } catch {
+      throw new ErrorApi('RECIBO_INVALIDO', 'Envía el recibo como multipart/form-data, en el campo "archivo".');
+    }
+
+    const archivo = cuerpo['archivo'];
+    if (!(archivo instanceof File)) {
+      throw new ErrorApi('RECIBO_INVALIDO', 'Falta el archivo PDF del recibo (campo "archivo").');
+    }
+    if (archivo.size === 0 || archivo.size > TAMANO_MAXIMO_RECIBO) {
+      throw new ErrorApi('RECIBO_INVALIDO', 'El archivo está vacío o supera el máximo de 10 MB.');
+    }
+
+    const bytes = new Uint8Array(await archivo.arrayBuffer());
+    // El tipo MIME lo declara el cliente; la firma "%PDF-" es lo que de verdad lo identifica.
+    if (Buffer.from(bytes.subarray(0, 5)).toString('latin1') !== '%PDF-') {
+      throw new ErrorApi('RECIBO_INVALIDO', 'El archivo no es un PDF.');
+    }
+
+    const { paginas, origen } = await extraerTextoRecibo(bytes);
+    const { datos, advertencias } = analizarReciboCfe(paginas);
+    if (!reciboReconocido(datos)) {
+      throw new ErrorApi(
+        'RECIBO_NO_RECONOCIDO',
+        'El PDF no parece un recibo de CFE: no se encontró el número de servicio ni el histórico de consumo.',
+        422
+      );
+    }
+
+    return c.json(resultadoReciboCfeSchema.parse({ datos, advertencias, origenTexto: origen }));
+  }
+);
 
 cotizacionesRoutes.get('/', zValidator('query', paginacionSchema), async (c) => {
   const prisma = c.get('prisma');

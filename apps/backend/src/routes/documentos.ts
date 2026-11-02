@@ -8,7 +8,7 @@ import { crearSesion, invalidarSesion } from '../servicios/auth.ts';
 export const documentosRoutes = new Hono<{ Variables: VariablesApp }>();
 
 /** Documentos que la vista `/documentos/imprimir` sabe renderizar. */
-const TIPOS_IMPRIMIBLES = new Set(['cotizacion', 'contrato', 'carta-poder']);
+const TIPOS_IMPRIMIBLES = new Set(['cotizacion', 'cotizacion-larga', 'contrato', 'carta-poder']);
 
 /**
  * Vida del token con el que el navegador headless carga la vista de impresión.

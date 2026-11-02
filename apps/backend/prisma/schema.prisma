@@ -194,7 +194,10 @@ model Proyecto {
   hilos            String    @default("1 hilo")
   nombreRecibo     String    @default("")
   numeroServicio   String    @default("")
-  tarifa           String    @default("1A")
+  direccion        String    @default("")
+  codigoPostal     String    @default("")
+  numeroMedidor    String    @default("")
+  tarifa          String    @default("1A")
   usarNuevaTarifa  Boolean   @default(false)
   ivaCfe           Float     @default(16)
   aplicarDac       Boolean   @default(false)
@@ -254,6 +257,9 @@ model Cotizacion {
   inversorClave    String      @default("")
   inversorNombre   String      @default("")
   inversorWattsMax Float       @default(0)
+  /// "Inversor" o "Microinversor". Lo elige el asesor al cotizar (Paso 3) y se imprime
+  /// en la tabla de garantias del PDF; no es del catalogo porque cambia de obra a obra.
+  tipoEquipoInversor String    @default("Inversor")
   cantInversores   Int         @default(0)
   estructuraId     String?
   estructura       Estructura? @relation(fields: [estructuraId], references: [id])

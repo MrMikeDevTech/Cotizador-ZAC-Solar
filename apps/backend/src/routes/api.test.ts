@@ -384,6 +384,87 @@ describe('API Hono (contactos, proyectos, cotización, config)', () => {
     assert.equal(recuperado.cotizaciones[0].metodoPago, 'Financiado');
   });
 
+  test('El tipo de equipo inversor se guarda, se recupera y por defecto es "Inversor"', async () => {
+    const guardar = async (equipo: Record<string, unknown>) => {
+      const res = await req('/api/proyectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadProyecto({ equipo })),
+      });
+      return { status: res.status, cuerpo: (await res.json()) as any };
+    };
+    const equipoBase = { panelClave: 'jinko_615', cantPaneles: 7, inversorClave: 'growatt_mic_3300', cantInversores: 1 };
+
+    // Sin el campo (clientes anteriores al selector): "Inversor".
+    const sinCampo = await guardar(equipoBase);
+    assert.equal(sinCampo.status, 201);
+    assert.equal(sinCampo.cuerpo.cotizaciones[0].tipoEquipoInversor, 'Inversor');
+
+    // Con "Microinversor": se conserva al guardar y al volver a leer el proyecto.
+    const micro = await guardar({ ...equipoBase, tipoEquipoInversor: 'Microinversor' });
+    assert.equal(micro.status, 201);
+    assert.equal(micro.cuerpo.cotizaciones[0].tipoEquipoInversor, 'Microinversor');
+    const recuperado: any = await (await req(`/api/proyectos/${micro.cuerpo.id}`)).json();
+    assert.equal(recuperado.cotizaciones[0].tipoEquipoInversor, 'Microinversor');
+
+    // Un valor inventado se rechaza en vez de guardarse.
+    const invalido = await guardar({ ...equipoBase, tipoEquipoInversor: 'Convertidor' });
+    assert.equal(invalido.status, 400);
+  });
+
+  test('Código postal, medidor y dirección se guardan con el proyecto y la Carta Poder los actualiza sin nueva versión', async () => {
+    const base = payloadProyecto() as any;
+    const crear = await req('/api/proyectos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...base,
+        datosProyecto: {
+          ...base.datosProyecto,
+          direccion: 'Calle Reforma 120, Tepic, Nayarit',
+          codigoPostal: '63000',
+          numeroMedidor: '5GRR02',
+        },
+      }),
+    });
+    assert.equal(crear.status, 201);
+    const creado: any = await crear.json();
+    assert.equal(creado.codigoPostal, '63000');
+    assert.equal(creado.numeroMedidor, '5GRR02');
+    assert.equal(creado.direccion, 'Calle Reforma 120, Tepic, Nayarit');
+
+    const patch = (cuerpo: unknown) =>
+      req(`/api/proyectos/${creado.id}/datos-carta-poder`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      });
+
+    const ok = await patch({
+      direccion: 'Calle C 6, Zacualpan, Nayarit',
+      codigoPostal: '63710',
+      numeroServicio: '495250100166',
+      numeroMedidor: 'RJN641',
+    });
+    assert.equal(ok.status, 200);
+    const actualizado: any = await ok.json();
+    assert.equal(actualizado.codigoPostal, '63710');
+    assert.equal(actualizado.numeroServicio, '495250100166');
+    assert.equal(actualizado.cotizaciones[0].version, creado.cotizaciones[0].version);
+
+    // Faltante → 400, y no se pierde lo guardado.
+    assert.equal((await patch({ direccion: 'x', codigoPostal: '', numeroServicio: '1', numeroMedidor: '1' })).status, 400);
+    const relectura: any = await (await req(`/api/proyectos/${creado.id}`)).json();
+    assert.equal(relectura.numeroMedidor, 'RJN641');
+
+    const inexistente = await req('/api/proyectos/no-existe/datos-carta-poder', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direccion: 'x', codigoPostal: '1', numeroServicio: '1', numeroMedidor: '1' }),
+    });
+    assert.equal(inexistente.status, 404);
+  });
+
   test('Un proyecto guardado sin metodoPago devuelve "Contado"', async () => {
     const res = await req('/api/proyectos', {
       method: 'POST',

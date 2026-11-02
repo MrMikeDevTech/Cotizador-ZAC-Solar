@@ -2,16 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import {
+  construirCotizacionLargaPdf,
   construirCotizacionPdf,
+  construirDatosCartaPoder,
+  fechaCartaPoder,
   type ContactoCotizable,
   type EmpresaPdf,
   type ProyectoCotizable,
+  type ProyectoCotizableLargo,
 } from '@cotizador/shared';
 import { api } from '../../../lib/api';
 import { useConfiguracion } from '../../../lib/ConfiguracionContext';
 import { useSesion } from '../../../lib/SesionContext';
 import type { DatosEmpresa } from '../../proyectos/nuevo/types';
+import { PAGO_MINIMO_CFE } from '../../proyectos/nuevo/constants';
+import { DocumentoCartaPoder } from './DocumentoCartaPoder';
 import { DocumentoCotizacion } from './DocumentoCotizacion';
+import { DocumentoCotizacionLarga } from './DocumentoCotizacionLarga';
 import type { ContactoImpreso, ProyectoImpreso, TipoDocumento } from './tipos';
 
 /**
@@ -58,7 +65,9 @@ export default function ImprimirDocumento() {
   // No hay cotización vigente que imprimir: el proyecto cargó, pero
   // `cotizaciones[0]` no existe (p. ej. un borrador que no llegó al Paso 4).
   const sinCotizacionVigente =
-    tipo === 'cotizacion' && proyecto !== null && proyecto.cotizaciones.length === 0;
+    (tipo === 'cotizacion' || tipo === 'cotizacion-larga') &&
+    proyecto !== null &&
+    proyecto.cotizaciones.length === 0;
 
   // Señal para electron/main.ts: espera a `document.body.dataset.listo ===
   // '1'` antes de llamar a printToPDF(), para no capturar la página a medio
@@ -128,7 +137,18 @@ export default function ImprimirDocumento() {
   if (cargando) return <div className="p-10 text-sm text-gray-500">Cargando…</div>;
   if (!proyecto) return <div className="p-10 text-sm text-red-500">Proyecto no encontrado.</div>;
 
-  if (tipo === 'contrato' || tipo === 'carta-poder') {
+  if (tipo === 'carta-poder') {
+    // Lugar: el de la empresa (Configuración); sin él, el de la plantilla.
+    const lugar = empresa?.localidad?.trim() || 'Zacualpan, Nayarit';
+    return (
+      <DocumentoCartaPoder
+        datos={construirDatosCartaPoder(proyecto, usuario?.nombre ?? '')}
+        lugarFecha={`${lugar}, a ${fechaCartaPoder(new Date())}`}
+      />
+    );
+  }
+
+  if (tipo === 'contrato') {
     return <DocumentoLegal proyecto={proyecto} tipo={tipo} />;
   }
 
@@ -140,14 +160,27 @@ export default function ImprimirDocumento() {
     );
   }
 
+  // Si Configuración no tiene un firmante fijo, firma quien está cotizando.
+  // Esta vista corre en el mismo origen que la app (también en la ventana
+  // oculta de Electron), así que la sesión está disponible aquí.
+  const firmantePorDefecto = usuario ? { nombre: usuario.nombre } : undefined;
+
+  if (tipo === 'cotizacion-larga') {
+    const datosLarga = construirCotizacionLargaPdf({
+      proyecto: adaptarProyectoCotizableLargo(proyecto),
+      empresa: adaptarEmpresaPdf(empresa),
+      fecha: new Date(),
+      firmantePorDefecto,
+      pagoMinimoCfe: PAGO_MINIMO_CFE,
+    });
+    return <DocumentoCotizacionLarga datos={datosLarga} />;
+  }
+
   const datos = construirCotizacionPdf({
     proyecto: adaptarProyectoCotizable(proyecto),
     empresa: adaptarEmpresaPdf(empresa),
     fecha: new Date(),
-    // Si Configuración no tiene un firmante fijo, firma quien está cotizando.
-    // Esta vista corre en el mismo origen que la app (también en la ventana
-    // oculta de Electron), así que la sesión está disponible aquí.
-    firmantePorDefecto: usuario ? { nombre: usuario.nombre } : undefined,
+    firmantePorDefecto,
   });
 
   return <DocumentoCotizacion datos={datos} />;
@@ -171,6 +204,27 @@ function adaptarProyectoCotizable(proyecto: ProyectoImpreso): ProyectoCotizable 
     nombre: proyecto.nombre,
     localidadConsumo: proyecto.localidadConsumo,
     contacto: adaptarContactoCotizable(proyecto.contacto),
+    cotizaciones: [cotizacion],
+  };
+}
+
+/**
+ * Variante para la cotización larga: además de la cotización vigente necesita
+ * el historial de consumo y el periodo (bimestral/mensual). Al igual que
+ * `adaptarProyectoCotizable`, solo se llama con una cotización vigente.
+ */
+function adaptarProyectoCotizableLargo(proyecto: ProyectoImpreso): ProyectoCotizableLargo {
+  const cotizacion = proyecto.cotizaciones[0];
+  if (!cotizacion) {
+    throw new Error('adaptarProyectoCotizableLargo: el proyecto no tiene cotización vigente.');
+  }
+
+  return {
+    nombre: proyecto.nombre,
+    localidadConsumo: proyecto.localidadConsumo,
+    contacto: adaptarContactoCotizable(proyecto.contacto),
+    periodo: proyecto.periodo,
+    consumos: proyecto.consumos,
     cotizaciones: [cotizacion],
   };
 }
@@ -249,7 +303,7 @@ function DocumentoLegal({
   tipo,
 }: {
   proyecto: ProyectoImpreso;
-  tipo: 'contrato' | 'carta-poder';
+  tipo: 'contrato';
 }) {
   const cotizacion = proyecto.cotizaciones?.[0];
   const nombreContacto = [

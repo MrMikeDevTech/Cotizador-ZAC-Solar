@@ -14,6 +14,10 @@ export const datosProyectoSchema = z.object({
   hilos: z.string().default('1 hilo'),
   nombreRecibo: z.string().default(''),
   numeroServicio: z.string().default(''),
+  /** Datos del domicilio y medidor del recibo CFE; los usa la Carta Poder. */
+  direccion: z.string().default(''),
+  codigoPostal: z.string().default(''),
+  numeroMedidor: z.string().default(''),
   ivaCFE: z.number().default(16),
   porcentajeDap: z.string().default(''),
   usarNuevaTarifa: z.boolean().default(false),
@@ -25,11 +29,22 @@ export const datosProyectoSchema = z.object({
   consumos: z.array(consumoPeriodoSchema).length(6),
 });
 
+/** Tipo de equipo de conversión que se cotiza; cambia el texto de las garantías en el PDF. */
+export const TIPOS_EQUIPO_INVERSOR = ['Inversor', 'Microinversor'] as const;
+export type TipoEquipoInversor = (typeof TIPOS_EQUIPO_INVERSOR)[number];
+export const TIPO_EQUIPO_INVERSOR_POR_DEFECTO: TipoEquipoInversor = 'Inversor';
+
+/** Cualquier valor que no sea "Microinversor" (vacío, antiguo, mal escrito) se trata como "Inversor". */
+export function normalizarTipoEquipoInversor(valor: unknown): TipoEquipoInversor {
+  return valor === 'Microinversor' ? 'Microinversor' : TIPO_EQUIPO_INVERSOR_POR_DEFECTO;
+}
+
 export const equipoSeleccionadoSchema = z.object({
   panelClave: z.string().min(1, 'Debe seleccionar un panel'),
   cantPaneles: z.number().min(0),
   inversorClave: z.string().default(''),
   cantInversores: z.number().min(0),
+  tipoEquipoInversor: z.enum(TIPOS_EQUIPO_INVERSOR).default(TIPO_EQUIPO_INVERSOR_POR_DEFECTO),
 });
 
 export const cargoEditableSchema = z.object({

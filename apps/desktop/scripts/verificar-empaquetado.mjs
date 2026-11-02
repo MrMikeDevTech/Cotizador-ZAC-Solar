@@ -106,6 +106,77 @@ exigirArchivo(
   'bun run --filter @cotizador/backend db:generate'
 );
 
+// 7. OCR de recibos CFE (tesseract.js + PDFium en WebAssembly). Es JS/WASM, sin
+//    binarios nativos, pero tiene tres exigencias que fallan en silencio en el
+//    equipo de desarrollo y solo se notan en la app instalada: el worker y los
+//    .wasm deben quedar desempaquetados del asar, el idioma debe viajar como
+//    recurso, y las dependencias del worker deben desempaquetarse con él.
+for (const modulo of ['@hyzyla/pdfium', 'tesseract.js', 'tesseract.js-core', 'unpdf', 'pngjs']) {
+  try {
+    require.resolve(modulo);
+  } catch {
+    problemas.push(`La dependencia del OCR "${modulo}" no se resuelve.\n  Arréglalo con: bun install`);
+  }
+}
+
+exigirArchivo(
+  join(raizDesktop, '..', 'backend', 'assets', 'tessdata', 'spa.traineddata'),
+  'El idioma del OCR (spa.traineddata)',
+  'restaurarlo desde apps/backend/assets/tessdata (ver LEEME.md)'
+);
+
+const rutaYml = join(raizDesktop, 'electron-builder.yml');
+const yml = existsSync(rutaYml) ? readFileSync(rutaYml, 'utf-8') : '';
+if (!/to:\s*tessdata/.test(yml)) {
+  problemas.push(
+    'electron-builder.yml no copia los datos de idioma del OCR.\n' +
+      '  Falta en extraResources: from ../backend/assets/tessdata, to tessdata.'
+  );
+}
+
+// Cadena de dependencias de tesseract.js: cada una debe estar en asarUnpack, o el
+// worker (que corre desde app.asar.unpacked) no las encontrará al hacer require.
+const raizModulos = join(raizDesktop, '..', '..', 'node_modules');
+const IGNORAR = new Set(['opencollective-postinstall']); // solo un script de instalación
+const cadena = new Set(['@hyzyla/pdfium']);
+(function recorrer(nombre) {
+  if (cadena.has(nombre) || IGNORAR.has(nombre)) return;
+  cadena.add(nombre);
+  const rutaPaquete = join(raizModulos, nombre, 'package.json');
+  if (!existsSync(rutaPaquete)) return;
+  const dependencias = JSON.parse(readFileSync(rutaPaquete, 'utf-8')).dependencies ?? {};
+  for (const dependencia of Object.keys(dependencias)) recorrer(dependencia);
+})('tesseract.js');
+
+const sinDesempaquetar = [...cadena].filter((nombre) => !yml.includes(`node_modules/${nombre}/**/*`));
+if (sinDesempaquetar.length > 0) {
+  problemas.push(
+    'asarUnpack de electron-builder.yml no cubre toda la cadena del OCR. Faltan:\n' +
+      sinDesempaquetar.map((nombre) => `      - node_modules/${nombre}/**/*`).join('\n')
+  );
+}
+
+// El bundle debe dejarlos como externos (importados del node_modules empaquetado) y
+// llevar la ruta; si se incrustaran, el worker y el .wasm perderían su ubicación.
+if (existsSync(bundlePrincipal)) {
+  const bundle = readFileSync(bundlePrincipal, 'utf-8');
+  if (!bundle.includes('parsear-recibo-cfe')) {
+    problemas.push('El bundle no incluye la ruta parsear-recibo-cfe.\n  Arréglalo con: bun run build:electron');
+  }
+  for (const externo of ['tesseract.js', '@hyzyla/pdfium']) {
+    const importaExterno = bundle.includes(`from "${externo}"`) || bundle.includes(`from '${externo}'`);
+    if (!importaExterno) {
+      problemas.push(
+        `El bundle no importa "${externo}" como externo.\n` +
+          '  Revisa los --external de "build:electron" en package.json.'
+      );
+    }
+  }
+  if (!bundle.includes('TESSDATA_DIR')) {
+    problemas.push('main.ts no fija TESSDATA_DIR: el OCR no encontraría su idioma en la app instalada.');
+  }
+}
+
 if (problemas.length > 0) {
   console.error(`\n✖ No se puede empaquetar todavía (${problemas.length}):\n`);
   for (const problema of problemas) console.error(`  - ${problema}\n`);

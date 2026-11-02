@@ -1,3 +1,5 @@
+import { METODO_PAGO_POR_DEFECTO } from '../constants/metodosPago.ts';
+import { normalizarTipoEquipoInversor } from '../schemas/proyecto.ts';
 import { calcularPorcentajeDescuento } from './cotizacion.ts';
 import type {
   DatosCotizacionPdf,
@@ -23,7 +25,6 @@ const MESES_ES = [
 const TITULO_POR_DEFECTO = 'Cotización de sistema fotovoltaico';
 const TELEFONO_POR_DEFECTO = '***';
 const CLIENTE_POR_DEFECTO = 'A QUIEN CORRESPONDA';
-const METODO_PAGO_POR_DEFECTO = 'Contado';
 
 /**
  * Un concepto de la cotización tal como se guardó: sin el id de la plantilla
@@ -54,6 +55,8 @@ export interface CotizacionCotizable {
   cantPaneles: number;
   inversorNombre: string;
   cantInversores: number;
+  /** "Inversor" o "Microinversor"; opcional para quien aún no lo pasa (se asume "Inversor"). */
+  tipoEquipoInversor?: string;
   estructuraNombre: string;
   estructuraPrecio: number;
   tamanoSistemaW: number;
@@ -64,6 +67,12 @@ export interface CotizacionCotizable {
   montoIva: number;
   granTotal: number;
   metodoPago: string;
+  /**
+   * Observaciones capturadas en el Paso 4, una por línea. Si vienen vacías se
+   * usan las de la empresa (Configuración → Cotización). Opcional para no
+   * romper a quien aún no las pasa.
+   */
+  observaciones?: string;
   incluirIva: boolean;
   ocultarDesglose: boolean;
   descuento5: boolean;
@@ -165,7 +174,7 @@ function resolverConceptoLinea(
 
   if (nombreNormalizado.includes('inversor') && cotizacion.cantInversores > 0) {
     return {
-      descripcion: `Inversor marca **${cotizacion.inversorNombre}**`,
+      descripcion: `${normalizarTipoEquipoInversor(cotizacion.tipoEquipoInversor)} marca **${cotizacion.inversorNombre}**`,
       cantidad: cotizacion.cantInversores,
     };
   }
@@ -272,17 +281,32 @@ function resolverCliente(contacto: ContactoCotizable): string {
   return nombreCompleto !== '' ? nombreCompleto : CLIENTE_POR_DEFECTO;
 }
 
+/**
+ * Ubicación del proyecto para el documento: "Localidad, Estado" del contacto
+ * (p. ej. "Ixtapa de la Concepción, Nayarit").
+ *
+ * Respaldos, en orden, cuando falta la localidad del contacto:
+ * 1. "Municipio, Estado": el municipio sale de `localidadConsumo`, que el
+ *    Paso 2 guarda como un solo texto "Estado - Municipio".
+ * 2. Solo el estado.
+ * 3. `localidadConsumo` tal cual, si no tiene ese formato.
+ */
 function resolverUbicacion(proyecto: ProyectoCotizable): string {
-  if (proyecto.localidadConsumo.trim() !== '') {
-    return proyecto.localidadConsumo.trim();
-  }
+  const localidad = proyecto.contacto.localidad.trim();
+  const estadoContacto = proyecto.contacto.estado.trim();
 
-  const { localidad, estado } = proyecto.contacto;
-  if (localidad.trim() !== '' || estado.trim() !== '') {
-    return [localidad.trim(), estado.trim()].filter(Boolean).join(', ');
-  }
+  const partesConsumo = proyecto.localidadConsumo.split(' - ').map((parte) => parte.trim());
+  const consumoConFormato = partesConsumo.length >= 2;
+  const estadoConsumo = consumoConFormato ? (partesConsumo[0] ?? '') : '';
+  const municipio = consumoConFormato ? partesConsumo.slice(1).join(' - ') : '';
+  const estado = estadoContacto || estadoConsumo;
 
-  return '';
+  const unir = (lugar: string) => [lugar, estado].filter(Boolean).join(', ');
+
+  if (localidad !== '') return unir(localidad);
+  if (municipio !== '') return unir(municipio);
+  if (estado !== '') return estado;
+  return proyecto.localidadConsumo.trim();
 }
 
 function resolverTelefono(contacto: ContactoCotizable): string {
@@ -312,12 +336,26 @@ function resolverIntro(empresa: EmpresaPdf | null, cotizacion: CotizacionCotizab
   );
 }
 
-function resolverObservaciones(empresa: EmpresaPdf | null): string[] {
-  if (!empresa) return [];
-  return empresa.observaciones
+/** Partes un texto multilínea en observaciones, sin viñeta propia (el documento pone la suya). */
+function lineasDeObservaciones(texto: string | undefined): string[] {
+  return (texto ?? '')
     .split('\n')
-    .map((linea) => linea.trim())
+    .map((linea) => linea.trim().replace(/^[•·*-]\s*/, ''))
     .filter(Boolean);
+}
+
+/**
+ * Las observaciones de la cotización mandan sobre las de la empresa: son las
+ * que el asesor escribió para este cliente. Las de Configuración son el
+ * texto por defecto cuando no se capturó nada.
+ */
+function resolverObservaciones(
+  empresa: EmpresaPdf | null,
+  cotizacion: CotizacionCotizable
+): string[] {
+  const propias = lineasDeObservaciones(cotizacion.observaciones);
+  if (propias.length > 0) return propias;
+  return lineasDeObservaciones(empresa?.observaciones);
 }
 
 /**
@@ -355,7 +393,7 @@ export function construirCotizacionPdf(entrada: EntradaCotizacionPdf): DatosCoti
     intro: resolverIntro(empresa, cotizacion),
     lineas,
     total: redondear2(cotizacion.granTotal),
-    observaciones: resolverObservaciones(empresa),
+    observaciones: resolverObservaciones(empresa, cotizacion),
     firmaNombre: empresa?.firmaNombre.trim() || entrada.firmantePorDefecto?.nombre.trim() || '',
     firmaPuesto: empresa?.firmaPuesto.trim() || entrada.firmantePorDefecto?.puesto?.trim() || '',
     mostrarLogo: empresa !== null,

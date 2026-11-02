@@ -67,6 +67,8 @@ export interface CotizacionImpresa {
   inversorNombre: string;
   inversorWattsMax: number;
   cantInversores: number;
+  /** "Inversor" o "Microinversor", elegido en el Paso 3. */
+  tipoEquipoInversor: string;
   estructuraId: string | null;
   estructuraNombre: string;
   estructuraPrecio: number;
@@ -93,6 +95,8 @@ export interface CotizacionImpresa {
 
   metodoPrecio: string;
   metodoPago: string;
+  /** Observaciones del Paso 4, una por línea. */
+  observaciones: string;
   tipoMoneda: string;
   valorDolar: number;
   incluirIva: boolean;
@@ -110,6 +114,10 @@ export interface ProyectoImpreso {
   nombre: string;
   nombreRecibo: string;
   numeroServicio: string;
+  /** Datos del recibo CFE para la Carta Poder; vacíos en proyectos anteriores. */
+  direccion?: string;
+  codigoPostal?: string;
+  numeroMedidor?: string;
   tarifa: string;
   periodo: string;
   localidadConsumo: string;
@@ -120,4 +128,4 @@ export interface ProyectoImpreso {
 }
 
 /** Tipos de documento que sabe generar la vista de impresión. */
-export type TipoDocumento = 'cotizacion' | 'contrato' | 'carta-poder';
+export type TipoDocumento = 'cotizacion' | 'cotizacion-larga' | 'contrato' | 'carta-poder';

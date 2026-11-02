@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { GuardarProyectoPayload } from '@cotizador/shared';
+import type { GuardarProyectoPayload, TipoEquipoInversor } from '@cotizador/shared';
 import { api } from '../../../../lib/api';
 import type {
   DatosContacto,
@@ -19,6 +19,9 @@ export interface DatosParaGuardar {
   hilos: string;
   nombreRecibo: string;
   numeroServicio: string;
+  direccion: string;
+  codigoPostal: string;
+  numeroMedidor: string;
   ivaCFE: number;
   porcentajeDap: string;
   usarNuevaTarifa: boolean;
@@ -32,6 +35,7 @@ export interface DatosParaGuardar {
   cantPaneles: number | '';
   inversorKey: string;
   cantInversores: number | '';
+  tipoEquipoInversor: TipoEquipoInversor;
   estructuraSeleccionadaId: string | null;
   metodoPrecio: MetodoPrecio;
   metodoPago: string;
@@ -56,6 +60,9 @@ function construirPayload(datos: DatosParaGuardar, faseSlug: string): GuardarPro
       hilos: datos.hilos,
       nombreRecibo: datos.nombreRecibo,
       numeroServicio: datos.numeroServicio,
+      direccion: datos.direccion,
+      codigoPostal: datos.codigoPostal,
+      numeroMedidor: datos.numeroMedidor,
       ivaCFE: datos.ivaCFE,
       porcentajeDap: datos.porcentajeDap,
       usarNuevaTarifa: datos.usarNuevaTarifa,
@@ -71,6 +78,7 @@ function construirPayload(datos: DatosParaGuardar, faseSlug: string): GuardarPro
       cantPaneles: Number(datos.cantPaneles) || 0,
       inversorClave: datos.inversorKey,
       cantInversores: Number(datos.cantInversores) || 0,
+      tipoEquipoInversor: datos.tipoEquipoInversor,
     },
     otrosCargos: {
       estructuraId: datos.estructuraSeleccionadaId,

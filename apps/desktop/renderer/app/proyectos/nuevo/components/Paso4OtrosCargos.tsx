@@ -9,7 +9,12 @@ import {
   EstructuraInstalacion,
 } from '../types';
 import { LISTA_ESTRUCTURAS, CONCEPTOS_COTIZACION_DEFECTO } from '../constants';
-import { calcularTotalesCotizacion } from '@cotizador/shared';
+import {
+  calcularTotalesCotizacion,
+  esMetodoPagoPredefinido,
+  METODOS_PAGO,
+  METODO_PAGO_POR_DEFECTO,
+} from '@cotizador/shared';
 import { useConfiguracion } from '../../../../lib/ConfiguracionContext';
 import {
   ModalMetodoPrecio,
@@ -57,6 +62,9 @@ export interface Paso4OtrosCargosProps {
   onAnterior?: () => void;
 }
 
+/** Valor interno de la opción "Otro…" del selector; nunca se guarda. */
+const OPCION_PERSONALIZADA = '__personalizado__';
+
 export default function Paso4OtrosCargos({
   estructuraSeleccionadaId: controlledEstructuraId,
   setEstructuraSeleccionadaId: setControlledEstructuraId,
@@ -94,7 +102,7 @@ export default function Paso4OtrosCargos({
   // --- FALLBACKS LOCALES SI NO SE CONTROLAN DESDE EL PADRE ---
   const [localEstructuraId, setLocalEstructuraId] = useState<string | null>(null);
   const [localMetodoPrecio, setLocalMetodoPrecio] = useState<MetodoPrecio>('unitario');
-  const [localMetodoPago, setLocalMetodoPago] = useState<string>('Contado');
+  const [localMetodoPago, setLocalMetodoPago] = useState<string>(METODO_PAGO_POR_DEFECTO);
   const [localObservaciones, setLocalObservaciones] = useState<string>('');
   const [localOpcionesAvanzadas, setLocalOpcionesAvanzadas] = useState<boolean>(false);
   const [localIncluirIva, setLocalIncluirIva] = useState<boolean>(false);
@@ -207,28 +215,35 @@ export default function Paso4OtrosCargos({
     <div className="space-y-6 animate-fade-in pt-2">
       {/* --- BOTONES ACCIONES SUPERIORES --- */}
       <div className="flex flex-wrap justify-end gap-3 mb-6 items-center">
-        <input
-          type="text"
-          list="metodoPagoList"
-          value={metodoPago}
-          onChange={(e) => setMetodoPago(e.target.value)}
-          placeholder="Método de pago"
-          className="border border-[#2dd4bf] text-[#2dd4bf] px-4 py-2 rounded-full font-semibold text-xs focus:outline-none focus:border-[#00388d] focus:ring-1 focus:ring-[#00388d] w-32"
-        />
-        <datalist id="metodoPagoList">
-          <option value="Contado" />
-          <option value="Transferencia bancaria" />
-          <option value="Depósito bancario" />
-          <option value="Efectivo" />
-          <option value="Tarjeta de crédito" />
-          <option value="Tarjeta de débito" />
-          <option value="Cheque" />
-          <option value="Financiamiento bancario" />
-          <option value="Crédito directo" />
-          <option value="Arrendamiento" />
-          <option value="Pago en parcialidades" />
-          <option value="Mixto" />
-        </datalist>
+        {/* Un valor que no es una opción predefinida es una condición especial: se
+            muestra "Otro…" y el campo de texto. Se deduce del valor (no de un estado
+            aparte) para que un proyecto rehidratado con texto libre se vea bien. */}
+        <select
+          aria-label="Método de pago"
+          value={esMetodoPagoPredefinido(metodoPago) ? metodoPago : OPCION_PERSONALIZADA}
+          onChange={(e) =>
+            setMetodoPago(e.target.value === OPCION_PERSONALIZADA ? '' : e.target.value)
+          }
+          className="border border-[#2dd4bf] text-[#2dd4bf] bg-white px-4 py-2 rounded-full font-semibold text-xs focus:outline-none focus:border-[#00388d] focus:ring-1 focus:ring-[#00388d] cursor-pointer"
+        >
+          {METODOS_PAGO.map((metodo) => (
+            <option key={metodo} value={metodo}>
+              {metodo}
+            </option>
+          ))}
+          <option value={OPCION_PERSONALIZADA}>Otro (escribir)…</option>
+        </select>
+        {!esMetodoPagoPredefinido(metodoPago) && (
+          <input
+            type="text"
+            aria-label="Método de pago personalizado"
+            value={metodoPago}
+            onChange={(e) => setMetodoPago(e.target.value)}
+            placeholder="Condición de pago"
+            maxLength={120}
+            className="border border-[#2dd4bf] text-[#2dd4bf] px-4 py-2 rounded-full font-semibold text-xs focus:outline-none focus:border-[#00388d] focus:ring-1 focus:ring-[#00388d] w-56"
+          />
+        )}
 
         <button
           type="button"

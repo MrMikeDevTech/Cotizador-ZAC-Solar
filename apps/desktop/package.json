@@ -7,17 +7,21 @@
   "type": "module",
   "main": "electron/dist/main.js",
   "scripts": {
-    "build:electron": "cd ../.. && bun build apps/desktop/electron/main.ts apps/desktop/electron/preload.ts --target=node --format=esm --outdir=apps/desktop/electron/dist --external=electron --external=better-sqlite3 --external=@prisma/client --external=@prisma/adapter-better-sqlite3",
+    "build:electron": "cd ../.. && bun build apps/desktop/electron/main.ts apps/desktop/electron/preload.ts --target=node --format=esm --outdir=apps/desktop/electron/dist --external=electron --external=better-sqlite3 --external=@prisma/client --external=@prisma/adapter-better-sqlite3 --external=@hyzyla/pdfium --external=tesseract.js --external=unpdf --external=pngjs",
     "start": "bun run build:electron && electron .",
     "dist": "bun run build:electron && node scripts/verificar-empaquetado.mjs && electron-builder --config electron-builder.yml"
   },
   "dependencies": {
     "@cotizador/backend": "workspace:*",
     "@hono/node-server": "^2.1.1",
+    "@hyzyla/pdfium": "3.0.0",
     "@prisma/adapter-better-sqlite3": "7.10.0",
     "@prisma/client": "7.10.0",
     "better-sqlite3": "^13.0.3",
-    "hono": "^4.13.7"
+    "hono": "^4.13.7",
+    "pngjs": "^7.0.0",
+    "tesseract.js": "^7.0.0",
+    "unpdf": "^2.1.0"
   },
   "devDependencies": {
     "electron": "43.2.0",

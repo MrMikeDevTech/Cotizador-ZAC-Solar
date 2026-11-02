@@ -73,6 +73,59 @@ export type {
   CotizacionCotizable,
 } from './calculos/cotizacionPdf.ts';
 
+export type {
+  DatosCotizacionLargaPdf,
+  FilaConsumoHistoricoPdf,
+  FilaRetornoInversionPdf,
+  GraficaPdf,
+} from './types/cotizacionLargaPdf.ts';
+
+export {
+  construirCotizacionLargaPdf,
+  calcularEjeY,
+  calcularPuntosGrafica,
+  formatearDinero,
+} from './calculos/cotizacionLargaPdf.ts';
+export type {
+  EntradaCotizacionLargaPdf,
+  ProyectoCotizableLargo,
+  CotizacionCotizableLarga,
+  ConsumoCotizableLargo,
+} from './calculos/cotizacionLargaPdf.ts';
+
+export {
+  METODOS_PAGO,
+  METODO_PAGO_POR_DEFECTO,
+  normalizarMetodoPago,
+  esMetodoPagoPredefinido,
+} from './constants/metodosPago.ts';
+
+export {
+  analizarReciboCfe,
+  reciboReconocido,
+  separarNombreTitular,
+  PERIODOS_HISTORICO,
+} from './calculos/analizadorReciboCfe.ts';
+export type { ResultadoAnalisisRecibo } from './calculos/analizadorReciboCfe.ts';
+export {
+  aTitulo,
+  expandirEstado,
+  limpiarLineas,
+  limpiarTexto,
+  sinAcentos,
+} from './calculos/textoRecibo.ts';
+export * from './schemas/reciboCfe.ts';
+export { separarMarcaYModelo } from './calculos/equipo.ts';
+export {
+  camposFaltantesCartaPoder,
+  construirDatosCartaPoder,
+  ETIQUETAS_CARTA_PODER,
+  fechaCartaPoder,
+} from './calculos/cartaPoder.ts';
+export type { CampoCartaPoder, DatosCartaPoder, ProyectoParaCartaPoder } from './calculos/cartaPoder.ts';
+export { buscarLocalidadCatalogo } from './calculos/localidadRecibo.ts';
+export type { LocalidadCatalogo } from './calculos/localidadRecibo.ts';
+
 export * from './seed/catalogosIniciales.ts';
 
 export * from './schemas/contacto.ts';
